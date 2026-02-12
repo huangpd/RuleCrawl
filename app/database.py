@@ -3,7 +3,10 @@ RuleCrawl 数据库连接管理
 使用 Motor 异步驱动连接 MongoDB
 """
 
+import logging
 from motor.motor_asyncio import AsyncIOMotorClient
+
+logger = logging.getLogger(__name__)
 from app.config import MONGODB_URI, DATABASE_NAME
 
 # 全局客户端实例
@@ -23,7 +26,7 @@ async def connect_db():
     await db.data_store.create_index("project_id")
     await db.data_store.create_index("task_id")
 
-    print(f"✅ 已连接 MongoDB: {MONGODB_URI} / {DATABASE_NAME}")
+    logger.info("已连接 MongoDB: %s / %s", MONGODB_URI, DATABASE_NAME)
 
 
 async def close_db():
@@ -31,7 +34,7 @@ async def close_db():
     global client
     if client:
         client.close()
-        print("❎ MongoDB 连接已关闭")
+        logger.info("MongoDB 连接已关闭")
 
 
 def get_db():

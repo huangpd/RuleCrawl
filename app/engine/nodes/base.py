@@ -27,6 +27,7 @@ class NodeResult:
     urls: list[str] = field(default_factory=list)
     items: list[dict] = field(default_factory=list)
     data: dict = field(default_factory=dict)
+    url_data: dict[str, dict] = field(default_factory=dict)  # URL → 列表页提取的附加字段
     next_url: Optional[str] = None
     callback_node_id: Optional[str] = None
     context: Optional[CrawlContext] = None
@@ -55,8 +56,23 @@ class BaseNode(ABC):
         self.pagination = node_config.get("pagination", {})
         self.callback_node_id = node_config.get("callback_node_id")
 
+    def merge_headers(self, context_headers: dict) -> dict:
+        """合并上下文 Headers 和节点配置 Headers (节点配置优先)"""
+        headers = (context_headers or {}).copy()
+        if self.request_config.get("headers"):
+            headers.update(self.request_config.get("headers"))
+        return headers
+
+    def merge_cookies(self, context_cookies: dict) -> dict:
+        """合并上下文 Cookies 和节点配置 Cookies (节点配置优先)"""
+        cookies = (context_cookies or {}).copy()
+        if self.request_config.get("cookies"):
+            cookies.update(self.request_config.get("cookies"))
+        return cookies
+
     @abstractmethod
     async def execute(self, context: CrawlContext) -> NodeResult:
+        pass
         """
         执行节点逻辑
 

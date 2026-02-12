@@ -97,6 +97,11 @@ function loadNodeToForm(node) {
         }
     }
 
+    // 列表页透传字段
+    if (type === 'list') {
+        renderListFields(pr.fields || []);
+    }
+
     // 标记当前编辑的节点 ID
     app.state.editingNodeId = node._id;
     app.state.editingNodeType = type;
@@ -145,7 +150,7 @@ function collectNodeData(type) {
             item_selector_type: document.getElementById(`${type}-item-selector-type`)?.value || 'xpath',
             link_selector: document.getElementById(`${type}-link-selector`)?.value || null,
             link_selector_type: document.getElementById(`${type}-link-selector-type`)?.value || null,
-            fields: [],
+            fields: (type === 'list') ? collectListFields() : [],
         },
         callback_node_id: document.getElementById(`${type}-callback`)?.value || null,
     };
@@ -224,6 +229,9 @@ function newNode(type) {
     if (type === 'detail') {
         renderDetailFields([]);
     }
+    if (type === 'list') {
+        renderListFields([]);
+    }
     showToast('已切换到新建模式', 'info');
 }
 
@@ -275,6 +283,59 @@ function collectDetailFields() {
         const selectorType = row.querySelector('.field-type')?.value;
         if (name && selector) {
             fields.push({ name, selector, selector_type: selectorType });
+        }
+    });
+    return fields;
+}
+
+// ============ 列表页透传字段管理 ============
+
+/** 渲染列表页透传字段 */
+function renderListFields(fields) {
+    const container = document.getElementById('list-fields');
+    if (!container) return;
+    container.innerHTML = '';
+    // 只渲染非链接字段（is_link !== true）
+    const passFields = (fields || []).filter(f => !f.is_link);
+    passFields.forEach(f => addListField(f));
+}
+
+/** 添加一个列表页透传字段行 */
+function addListField(fieldData = null) {
+    const container = document.getElementById('list-fields');
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'field-row';
+    row.innerHTML = `
+        <input class="form-input field-name" placeholder="字段名 (如 author)">
+        <select class="form-select field-type">
+            <option value="xpath">XPath</option>
+            <option value="css">CSS</option>
+            <option value="jsonpath">JsonPath</option>
+            <option value="regex">Regex</option>
+        </select>
+        <input class="form-input field-selector" placeholder="选择器表达式">
+        <button class="field-remove-btn" onclick="this.parentElement.remove()">✕</button>
+    `;
+    if (fieldData) {
+        row.querySelector('.field-name').value = fieldData.name || '';
+        row.querySelector('.field-type').value = fieldData.selector_type || 'xpath';
+        row.querySelector('.field-selector').value = fieldData.selector || '';
+    }
+    container.appendChild(row);
+}
+
+/** 收集列表页透传字段 */
+function collectListFields() {
+    const fields = [];
+    const container = document.getElementById('list-fields');
+    if (!container) return fields;
+    container.querySelectorAll('.field-row').forEach(row => {
+        const name = row.querySelector('.field-name')?.value?.trim();
+        const selector = row.querySelector('.field-selector')?.value?.trim();
+        const selectorType = row.querySelector('.field-type')?.value;
+        if (name && selector) {
+            fields.push({ name, selector, selector_type: selectorType, is_link: false });
         }
     });
     return fields;

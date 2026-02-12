@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.database import connect_db, close_db
+from app.utils.http_client import init_client, close_client
 from app.api.projects import router as projects_router
 from app.api.nodes import router as nodes_router
 from app.api.tasks import router as tasks_router
@@ -20,7 +21,9 @@ from app.api.data import router as data_router
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     await connect_db()
+    await init_client()
     yield
+    await close_client()
     await close_db()
 
 

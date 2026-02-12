@@ -2,16 +2,21 @@
 任务运行 API
 """
 
+import logging
 import uuid
-import asyncio
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from app.database import get_db
 from app.engine.flow_manager import FlowManager
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1", tags=["任务管理"])
 
 # 运行中的任务管理器引用（用于停止任务）
+# ⚠️ 注意：此字典仅在当前进程内有效。
+# 多 worker 部署时（如 uvicorn --workers N），各进程独立维护自己的实例，
+# 无法跨进程停止任务。如需多 worker 支持，应改用 Redis 等外部存储。
 _running_managers: dict[str, FlowManager] = {}
 
 
@@ -56,15 +61,19 @@ async def run_project(project_id: str, background_tasks: BackgroundTasks):
 
     # 后台执行爬虫
     _running_managers[task_id] = manager
+    logger.info("任务 %s 已加入后台执行队列 (项目: %s)", task_id, project_id)
 
     async def run_and_cleanup():
         try:
             await manager.execute()
+        except Exception as e:
+            logger.error("任务 %s 执行异常: %s", task_id, e, exc_info=True)
         finally:
             _running_managers.pop(task_id, None)
             await db.projects.update_one(
                 {"_id": project_id}, {"$set": {"status": "idle"}}
             )
+            logger.info("任务 %s 已结束，项目状态已恢复为 idle", task_id)
 
     background_tasks.add_task(run_and_cleanup)
 
@@ -93,6 +102,9 @@ async def stop_task(task_id: str):
     if manager:
         manager.stop()
         _running_managers.pop(task_id, None)
+        logger.info("任务 %s 已接收停止指令", task_id)
+    else:
+        logger.warning("任务 %s 不在当前进程的运行列表中（可能已结束或在其他 worker）", task_id)
 
     await db.tasks.update_one(
         {"_id": task_id},
