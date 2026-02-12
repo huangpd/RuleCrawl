@@ -37,6 +37,9 @@ async def list_data(
 
     items = []
     async for doc in cursor:
+        # 转换 ObjectId 为字符串，防止 json 序列化报错
+        if "_id" in doc:
+            doc["_id"] = str(doc["_id"])
         items.append(doc)
 
     return {

@@ -139,7 +139,8 @@ class UniversalParser:
         try:
             expr = jsonpath_parse(selector)
             matches = expr.find(self._json_data)
-            return [str(m.value) for m in matches]
+            # 兼容性处理：去除可能存在的首尾引号
+            return [str(m.value).strip("'\"") for m in matches]
         except Exception:
             return []
 

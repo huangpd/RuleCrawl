@@ -50,10 +50,20 @@ app.include_router(tasks_router)
 app.include_router(data_router)
 
 
+from starlette.responses import Response
+
+class SafeStaticFiles(StaticFiles):
+    """自定义静态文件处理器，捕获路径非法导致的 OSError"""
+    async def get_response(self, path: str, scope):
+        try:
+            return await super().get_response(path, scope)
+        except (OSError, ValueError):
+            return Response("Not Found", status_code=404)
+
 # 挂载前端静态文件
 frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
 if os.path.exists(frontend_dir):
-    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+    app.mount("/", SafeStaticFiles(directory=frontend_dir, html=True), name="frontend")
 
 
 @app.get("/api/health")

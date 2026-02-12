@@ -447,9 +447,10 @@ function renderDataTable(result) {
     result.items.forEach((item, i) => {
         html += '<tr>';
         html += `<td>${(result.page - 1) * result.page_size + i + 1}</td>`;
-        html += `<td><a href="${item.source_url}" target="_blank" title="${item.source_url}">${item.source_url?.substring(0, 50)}...</a></td>`;
+        const cleanUrl = (item.source_url || '').replace(/['"]/g, '');
+        html += `<td><a href="${cleanUrl}" target="_blank" title="${cleanUrl}">${cleanUrl.substring(0, 50)}...</a></td>`;
         keys.forEach(k => {
-            const val = item.data?.[k] || '';
+            const val = escapeHtml(item.data?.[k] || '');
             html += `<td title="${val}">${val.substring(0, 80)}</td>`;
         });
         html += `<td>${formatDate(item.crawl_time)}</td>`;
@@ -541,7 +542,7 @@ function renderModalDataTable(result) {
         const idx = (result.page - 1) * result.page_size + i + 1;
         const timeStr = formatDate(item.crawl_time);
         // 格式化 JSON，缩进 2 空格
-        const jsonStr = JSON.stringify(item.data, null, 2);
+        const jsonStr = escapeHtml(JSON.stringify(item.data, null, 2));
 
         html += '<tr>';
         html += `<td style="vertical-align:top; color:var(--text-dim);">${idx}</td>`;
