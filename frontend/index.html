@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RuleCrawl — 基于规则的爬虫采集系统</title>
+    <meta name="description" content="可视化规则爬虫采集平台，支持 5 种标签页节点自由编排组合">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+
+    <!-- Toast 通知容器 -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- 页面视图容器 -->
+    <div id="view-container">
+
+        <!-- 视图 1：项目列表页 -->
+        <div id="view-project-list" class="view-page active">
+            <nav class="navbar">
+                <div class="navbar-brand">
+                    <span class="icon">🕷️</span>
+                    <span>RuleCrawl</span>
+                </div>
+                <div class="navbar-actions">
+                    <div style="display:flex;align-items:center;gap:8px;margin-right:12px;">
+                        <input id="projectSearchInput" class="form-input" placeholder="搜索项目..."
+                            style="width: 200px; height: 32px;" onkeyup="if(event.key==='Enter') searchProjects()">
+                        <button class="btn btn-ghost btn-sm" onclick="searchProjects()">🔍</button>
+                    </div>
+                    <button class="btn btn-primary btn-sm" onclick="showCreateProjectModal()">✨ 新建项目</button>
+                </div>
+            </nav>
+            <div class="container" style="padding: 40px;">
+                <h2 style="margin-bottom: 24px; font-weight: 300; color: var(--text-secondary);">我的项目</h2>
+                <div id="projectGrid" class="project-list-container">
+                    <!-- 项目卡片将渲染在这里 -->
+                </div>
+                <div id="projectPagination" class="pagination" style="margin-top: 24px; justify-content: center;"></div>
+            </div>
+        </div>
+
+        <!-- 视图 2：工作区（原有界面） -->
+        <div id="view-workspace" class="view-page" style="display:none;">
+            <nav class="navbar">
+                <div class="navbar-brand">
+                    <button class="btn btn-ghost btn-sm btn-icon" onclick="backToProjects()" title="返回项目列表">⬅</button>
+                    <span class="icon">🕷️</span>
+                    <span id="workspaceProjectName">RuleCrawl</span>
+                </div>
+                <div class="navbar-actions">
+                    <!-- Actions moved to sidebar footer -->
+                </div>
+            </nav>
+
+            <!-- 主布局 -->
+            <div class="main-layout">
+
+                <!-- ===== 左侧面板 ===== -->
+                <aside class="sidebar">
+
+                    <!-- 节点流程图 -->
+                    <div class="sidebar-section" style="border-bottom:none; padding: 12px 16px;">
+                        <div class="sidebar-section-title">流程编排</div>
+                    </div>
+                    <div id="flowPanel" class="flow-panel">
+                        <div class="empty-state" style="padding:24px">
+                            <div class="icon">🕸️</div>
+                            <p>选择项目后显示节点</p>
+                        </div>
+                    </div>
+
+                    <div class="sidebar-section"
+                        style="border-top: 1px solid var(--glass-border); padding: 16px; background: rgba(0,0,0,0.2);">
+                        <button class="btn btn-success btn-block" onclick="runTask()"
+                            style="height:40px; font-size:14px; box-shadow: 0 4px 12px rgba(74, 222, 128, 0.15);">🚀
+                            启动采集任务</button>
+                        <button class="btn btn-warning btn-block" onclick="stopTask()" style="margin-top:12px;">⏹
+                            停止任务</button>
+
+                        <div style="margin-top:16px; text-align:center; min-height: 40px;">
+                            <div id="taskStatus" style="font-size:13px; font-weight:500; margin-bottom:4px;"></div>
+                            <div id="taskStats" style="font-size:11px; color:var(--text-dim); line-height:1.4;"></div>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- ===== 右侧主面板 ===== -->
+                <main class="main-panel">
+
+                    <!-- 标签页导航 (Hidden) -->
+                    <div class="tabs-bar" style="display:none;">
+                        <button class="tab-btn active" data-tab="tab-start">
+                            <span class="tab-icon">🚀</span> 起始页
+                        </button>
+                        <button class="tab-btn" data-tab="tab-intermediate">
+                            <span class="tab-icon">🔗</span> 中间页
+                        </button>
+                        <button class="tab-btn" data-tab="tab-list">
+                            <span class="tab-icon">📋</span> 列表页
+                        </button>
+                        <button class="tab-btn" data-tab="tab-next">
+                            <span class="tab-icon">⏭️</span> 下一页
+                        </button>
+                        <button class="tab-btn" data-tab="tab-detail">
+                            <span class="tab-icon">📄</span> 详情页
+                        </button>
+                        <button class="tab-btn" data-tab="tab-data">
+                            <span class="tab-icon">📊</span> 采集数据
+                        </button>
+                    </div>
+
+                    <!-- 标签页内容 -->
+                    <div class="tab-content">
+
+                        <!-- ====== 起始页 ====== -->
+                        <div id="tab-start" class="tab-pane active">
+                            <div class="glass-card">
+                                <div class="card-title"><span class="dot green"></span> 起始页配置</div>
+                                <p style="font-size:12px;color:var(--text-dim);margin-bottom:16px;">系统入口节点，配置初始请求的
+                                    URL、Headers 和
+                                    Cookies。</p>
+
+                                <div class="form-group">
+                                    <label class="form-label">节点名称</label>
+                                    <input id="start-name" class="form-input" placeholder="例如：首页" value="起始页">
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">起始 URL *</label>
+                                        <input id="start-url" class="form-input" placeholder="https://example.com">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">请求方法</label>
+                                        <select id="start-method" class="form-select">
+                                            <option value="GET">GET</option>
+                                            <option value="POST">POST</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">Headers <span
+                                            style="color:var(--text-dim)">(JSON格式)</span></label>
+                                    <textarea id="start-headers" class="form-textarea"></textarea>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">POST Body <span style="color:var(--text-dim)">(仅 POST
+                                            方法)</span></label>
+                                    <textarea id="start-body" class="form-textarea"></textarea>
+                                </div>
+
+                                <div class="callback-selector" style="display:none;">
+                                    <label>🔀 回调到：</label>
+                                    <select id="start-callback" class="form-select">
+                                        <option value="">无（终点）</option>
+                                    </select>
+                                </div>
+
+                                <div id="start-next-step" class="next-step-section"></div>
+                            </div>
+
+                            <div style="display:flex;gap:12px;">
+                                <button class="btn btn-primary" onclick="saveNode('start')">💾 保存节点</button>
+                            </div>
+                        </div>
+
+                        <!-- ====== 中间页 ====== -->
+                        <div id="tab-intermediate" class="tab-pane">
+                            <div class="glass-card">
+                                <div class="card-title"><span class="dot gray"></span> 中间页配置</div>
+                                <p style="font-size:12px;color:var(--text-dim);margin-bottom:16px;">处理重定向、获取
+                                    Token、过桥页面。可选配置解析规则提取中间数据。</p>
+
+                                <div class="form-group">
+                                    <label class="form-label">节点名称</label>
+                                    <input id="intermediate-name" class="form-input" placeholder="例如：Token 获取页"
+                                        value="中间页">
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">URL</label>
+                                        <input id="intermediate-url" class="form-input" placeholder="留空则使用上下文 URL">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">请求方法</label>
+                                        <select id="intermediate-method" class="form-select">
+                                            <option value="GET">GET</option>
+                                            <option value="POST">POST</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+
+                                <div class="callback-selector" style="display:none;">
+                                    <label>🔀 回调到：</label>
+                                    <select id="intermediate-callback" class="form-select">
+                                        <option value="">无（终点）</option>
+                                    </select>
+                                </div>
+
+                                <div id="intermediate-next-step" class="next-step-section"></div>
+                            </div>
+
+                            <div style="display:flex;gap:12px;">
+                                <button class="btn btn-primary" onclick="saveNode('intermediate')">💾 保存节点</button>
+                            </div>
+                        </div>
+
+                        <!-- ====== 列表页 ====== -->
+                        <div id="tab-list" class="tab-pane">
+                            <div class="glass-card">
+                                <div class="card-title"><span class="dot blue"></span> 列表页配置</div>
+                                <p style="font-size:12px;color:var(--text-dim);margin-bottom:16px;">
+                                    解析列表中的多个条目，"分裂"出多个子链接分发给回调节点。</p>
+
+                                <div class="form-group">
+                                    <label class="form-label">节点名称</label>
+                                    <input id="list-name" class="form-input" placeholder="例如：文章列表" value="列表页">
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">请求方法</label>
+                                    <select id="list-method" class="form-select">
+                                        <option value="GET">GET</option>
+                                        <option value="POST">POST</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group" style="flex:2">
+                                        <label class="form-label">列表项选择器 <span style="color:var(--text-dim)">(Item
+                                                Selector)</span></label>
+                                        <input id="list-item-selector" class="form-input"
+                                            placeholder="//div[@class='item']">
+                                    </div>
+                                    <div class="form-group" style="flex:1">
+                                        <label class="form-label">选择器类型</label>
+                                        <select id="list-item-selector-type" class="form-select">
+                                            <option value="xpath">XPath</option>
+                                            <option value="css">CSS Selector</option>
+                                            <option value="jsonpath">JsonPath</option>
+                                            <option value="regex">Regex</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">链接选择器 <span style="color:var(--text-dim)">(Link
+                                                Selector)</span></label>
+                                        <input id="list-link-selector" class="form-input" placeholder=".//a/@href">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">链接选择器类型</label>
+                                        <select id="list-link-selector-type" class="form-select">
+                                            <option value="xpath">XPath</option>
+                                            <option value="css">CSS Selector</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+
+                                <div class="callback-selector" style="display:none;">
+                                    <label>🔀 回调到：</label>
+                                    <select id="list-callback" class="form-select">
+                                        <option value="">无（终点）</option>
+                                    </select>
+                                </div>
+
+                                <div id="list-next-step" class="next-step-section"></div>
+                            </div>
+
+                            <div style="display:flex;gap:12px;">
+                                <button class="btn btn-primary" onclick="saveNode('list')">💾 保存节点</button>
+                            </div>
+                        </div>
+
+                        <!-- ====== 下一页 ====== -->
+                        <div id="tab-next" class="tab-pane">
+                            <div class="glass-card">
+                                <div class="card-title"><span class="dot orange"></span> 下一页配置</div>
+                                <p style="font-size:12px;color:var(--text-dim);margin-bottom:16px;">
+                                    提取翻页链接，"循环"回调目标节点（通常是列表页），实现自动翻页。</p>
+
+                                <div class="form-group">
+                                    <label class="form-label">节点名称</label>
+                                    <input id="next-name" class="form-input" placeholder="例如：翻页" value="下一页">
+                                </div>
+
+                                <div class="form-row-3">
+                                    <div class="form-group">
+                                        <label class="form-label">翻页选择器</label>
+                                        <input id="next-pg-selector" class="form-input"
+                                            placeholder="//a[@class='next']/@href">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">选择器类型</label>
+                                        <select id="next-pg-selector-type" class="form-select">
+                                            <option value="xpath">XPath</option>
+                                            <option value="css">CSS Selector</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">最大页数</label>
+                                        <input id="next-pg-max" class="form-input" type="number" value="10" min="1"
+                                            max="9999">
+                                    </div>
+                                </div>
+
+
+                                <div class="callback-selector" style="display:none;">
+                                    <label>🔀 回调到：</label>
+                                    <select id="next-callback" class="form-select">
+                                        <option value="">无（终点）</option>
+                                    </select>
+                                </div>
+
+                                <div id="next-next-step" class="next-step-section"></div>
+                            </div>
+
+                            <div style="display:flex;gap:12px;">
+                                <button class="btn btn-primary" onclick="saveNode('next')">💾 保存节点</button>
+                            </div>
+                        </div>
+
+                        <!-- ====== 详情页 ====== -->
+                        <div id="tab-detail" class="tab-pane">
+                            <div class="glass-card">
+                                <div class="card-title"><span class="dot purple"></span> 详情页配置</div>
+                                <p style="font-size:12px;color:var(--text-dim);margin-bottom:16px;">
+                                    按字段规则提取数据，持久化入库。详情页是终点节点，不需要设置回调。</p>
+
+                                <div class="form-group">
+                                    <label class="form-label">节点名称</label>
+                                    <input id="detail-name" class="form-input" placeholder="例如：文章详情" value="详情页">
+                                </div>
+
+                            </div>
+
+                            <div class="glass-card">
+                                <div class="card-title"><span class="dot purple"></span> 字段提取规则</div>
+                                <p style="font-size:12px;color:var(--text-dim);margin-bottom:16px;">
+                                    定义要提取的数据字段。每个字段由名称、选择器类型和选择器表达式组成。</p>
+
+                                <div id="detail-fields" class="field-list"></div>
+
+                                <button class="btn btn-ghost btn-sm" onclick="addDetailField()"
+                                    style="margin-top:12px;">➕
+                                    添加字段</button>
+                            </div>
+
+                            <div class="glass-card">
+                                <div class="card-title"><span class="dot purple"></span> 数据去重配置</div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label class="form-label">去重策略</label>
+                                        <select id="detail-dedup-type" class="form-select"
+                                            onchange="toggleDedupField()">
+                                            <option value="none">不去重</option>
+                                            <option value="url">按 URL 去重</option>
+                                            <option value="field">按字段去重</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" id="detail-dedup-field-group" style="display:none;">
+                                        <label class="form-label">去重字段名</label>
+                                        <input id="detail-dedup-field" class="form-input" placeholder="例如：id 或 title">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="display:flex;gap:12px;">
+                                <button class="btn btn-primary" onclick="saveNode('detail')">💾 保存节点</button>
+                            </div>
+                        </div>
+
+                        <!-- ====== 采集数据 ====== -->
+                        <div id="tab-data" class="tab-pane">
+                            <div class="glass-card">
+                                <div class="card-title"><span class="dot cyan"
+                                        style="background:var(--accent-cyan)"></span>
+                                    采集数据</div>
+                                <div style="display:flex;gap:12px;margin-bottom:16px;">
+                                    <button class="btn btn-primary btn-sm" onclick="loadData(1)">🔄 刷新数据</button>
+                                    <button class="btn btn-danger btn-sm" onclick="clearData()">🗑️ 清空数据</button>
+                                </div>
+                                <div id="dataTableContainer">
+                                    <div class="empty-state">
+                                        <div class="icon">📭</div>
+                                        <p>点击"刷新数据"加载采集结果</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </main>
+            </div>
+
+
+        </div> <!-- End view-container -->
+
+        <!-- 节点类型选择模态框 -->
+        <div id="nodeTypeModal" class="modal-overlay" style="display:none;">
+            <div class="modal-content glass-card" style="width:300px;text-align:center;">
+                <h3 style="margin-bottom:16px;">选择子节点类型</h3>
+                <div class="node-type-grid">
+                    <button class="btn btn-outline btn-block" onclick="selectNodeType('list')">📋 列表页</button>
+                    <button class="btn btn-outline btn-block" onclick="selectNodeType('detail')">📄 详情页</button>
+                    <button class="btn btn-outline btn-block" onclick="selectNodeType('next')">⏭️ 下一页</button>
+                    <button class="btn btn-outline btn-block" onclick="selectNodeType('intermediate')">🔗
+                        中间页</button>
+                </div>
+                <button class="btn btn-ghost btn-sm" onclick="closeNodeTypeModal()" style="margin-top:16px;">取消</button>
+            </div>
+        </div>
+
+        <!-- 新建项目模态框 -->
+        <div id="createProjectModal" class="modal-overlay" style="display:none;">
+            <div class="modal-content glass-card" style="width:400px;">
+                <h3 style="margin-bottom:16px;">新建爬虫项目</h3>
+                <div class="form-group">
+                    <label class="form-label">项目名称 *</label>
+                    <input id="modalProjectName" class="form-input" placeholder="例如：某新闻网站采集">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">描述</label>
+                    <textarea id="modalProjectDesc" class="form-textarea" rows="3"
+                        placeholder="简要描述爬虫的目标和用途..."></textarea>
+                </div>
+                <div style="display:flex; justify-content:flex-end; gap:12px; margin-top:24px;">
+                    <button class="btn btn-ghost" onclick="closeCreateProjectModal()">取消</button>
+                    <button class="btn btn-primary" onclick="confirmCreateProject()">创建项目</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 数据查看模态框 -->
+        <div id="dataViewModal" class="modal-overlay" style="display:none;">
+            <div class="modal-content glass-card"
+                style="width:900px; height:80vh; display:flex; flex-direction:column;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                    <h3 id="dataModalTitle">项目数据</h3>
+                    <button class="btn btn-ghost btn-sm" onclick="closeDataViewModal()">✕</button>
+                </div>
+
+                <div
+                    style="margin-bottom:12px; font-size:13px; color:var(--text-dim); display:flex; justify-content:space-between;">
+                    <span>共 <span id="dataModalTotal" style="color:var(--text-primary); font-weight:bold;">0</span>
+                        条数据</span>
+                    <button class="btn btn-primary btn-xs" onclick="loadModalData(1)">🔄 刷新</button>
+                </div>
+
+                <div id="modalDataTableContainer"
+                    style="flex:1; overflow-y:auto; min-height:0; border:1px solid var(--glass-border); border-radius:6px;">
+                    <!-- 表格渲染区 -->
+                </div>
+
+                <div id="modalDataPagination" class="pagination" style="margin-top:16px; justify-content:flex-end;">
+                    <!-- 分页控件 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- JS 脚本 -->
+        <script src="js/utils.js?v=1.1"></script>
+        <script src="js/api.js?v=1.1"></script>
+        <script src="js/flow.js?v=1.1"></script>
+        <script src="js/tabs.js?v=1.1"></script>
+        <script src="js/app.js?v=1.1"></script>
+
+    </div> <!-- End view-container -->
+</body>
+
+</html>
