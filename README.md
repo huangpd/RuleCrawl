@@ -51,6 +51,8 @@ graph TB
     Scheduler --> FlowMgr
 ```
 
+> **注意**：`app/api/tasks.py` 中使用进程内内存 `_running_managers` 字典来管理运行中的任务。这意味着在多进程部署（如 `uvicorn --workers > 1`）下，必须保证任务控制请求路由到同一进程，或者改用 Redis 等外部存储来管理任务状态。当前实现仅适用于单进程部署或开发环境。
+
 ## 🔄 数据流转 (节点执行时序)
 
 ```mermaid

@@ -5,10 +5,13 @@
 
 import re
 import json
-from typing import Any
+import logging
+from typing import Any, Union
 from lxml import etree
 from parsel import Selector
 from jsonpath_ng import parse as jsonpath_parse
+
+logger = logging.getLogger(__name__)
 
 
 class UniversalParser:
@@ -22,12 +25,12 @@ class UniversalParser:
     - regex: 正则表达式（基于 re）
     """
 
-    def __init__(self, content: str, content_type: str = "html"):
+    def __init__(self, content: Union[str, dict, list], content_type: str = "html"):
         """
         初始化解析器
 
         Args:
-            content: 原始内容（HTML 或 JSON 字符串）
+            content: 原始内容（HTML 字符串, JSON 字符串, 或 Python 对象）
             content_type: 内容类型 html / json / text
         """
         self.raw_content = content
@@ -37,12 +40,19 @@ class UniversalParser:
         self._json_data = None
 
         if content_type == "html":
-            self._tree = etree.HTML(content)
-            self._selector = Selector(text=content)
+            if isinstance(content, str):
+                self._tree = etree.HTML(content)
+                self._selector = Selector(text=content)
         elif content_type == "json":
-            try:
-                self._json_data = json.loads(content)
-            except json.JSONDecodeError:
+            if isinstance(content, (dict, list)):
+                self._json_data = content
+            elif isinstance(content, str):
+                try:
+                    self._json_data = json.loads(content)
+                except json.JSONDecodeError:
+                    self._json_data = {}
+                    logger.warning("Invalid JSON content provided")
+            else:
                 self._json_data = {}
 
     def extract(self, selector: str, selector_type: str = "xpath") -> list[str]:
@@ -87,29 +97,32 @@ class UniversalParser:
         Returns:
             每个列表项的 UniversalParser 实例列表
         """
-        if selector_type == "xpath":
-            if self._tree is not None:
-                elements = self._tree.xpath(item_selector)
-                return [
-                    UniversalParser(
-                        etree.tostring(el, encoding="unicode", method="html"),
-                        "html",
-                    )
-                    for el in elements
-                ]
-        elif selector_type == "css":
-            if self._selector is not None:
-                items = self._selector.css(item_selector)
-                return [
-                    UniversalParser(item.get(), "html") for item in items
-                ]
-        elif selector_type == "jsonpath":
-            if self._json_data is not None:
-                expr = jsonpath_parse(item_selector)
-                matches = expr.find(self._json_data)
-                return [
-                    UniversalParser(json.dumps(m.value), "json") for m in matches
-                ]
+        try:
+            if selector_type == "xpath":
+                if self._tree is not None:
+                    elements = self._tree.xpath(item_selector)
+                    return [
+                        UniversalParser(
+                            etree.tostring(el, encoding="unicode", method="html"),
+                            "html",
+                        )
+                        for el in elements
+                    ]
+            elif selector_type == "css":
+                if self._selector is not None:
+                    items = self._selector.css(item_selector)
+                    return [
+                        UniversalParser(item.get(), "html") for item in items
+                    ]
+            elif selector_type == "jsonpath":
+                if self._json_data is not None:
+                    expr = jsonpath_parse(item_selector)
+                    matches = expr.find(self._json_data)
+                    return [
+                        UniversalParser(m.value, "json") for m in matches
+                    ]
+        except Exception as e:
+            logger.error(f"Error extracting items with selector '{item_selector}' ({selector_type}): {e}")
         return []
 
     def _extract_xpath(self, selector: str) -> list[str]:
@@ -119,7 +132,8 @@ class UniversalParser:
         try:
             results = self._tree.xpath(selector)
             return [str(r).strip() for r in results if str(r).strip()]
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error in XPath extraction '{selector}': {e}")
             return []
 
     def _extract_css(self, selector: str) -> list[str]:
@@ -129,7 +143,8 @@ class UniversalParser:
         try:
             results = self._selector.css(selector).getall()
             return [r.strip() for r in results if r.strip()]
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error in CSS extraction '{selector}': {e}")
             return []
 
     def _extract_jsonpath(self, selector: str) -> list[str]:
@@ -139,18 +154,39 @@ class UniversalParser:
         try:
             expr = jsonpath_parse(selector)
             matches = expr.find(self._json_data)
-            # 兼容性处理：去除可能存在的首尾引号
-            return [str(m.value).strip("'\"") for m in matches]
-        except Exception:
+            results = []
+            for m in matches:
+                val = m.value
+                if isinstance(val, (dict, list)):
+                    # 对于复杂对象，返回标准 JSON 字符串
+                    results.append(json.dumps(val, ensure_ascii=False))
+                elif isinstance(val, str):
+                    # 字符串直接返回，不做 strip 处理（除非确认为脏数据，但通用解析器不应随意修改数据）
+                    results.append(val)
+                else:
+                    # 其他类型（int, bool 等）转字符串
+                    results.append(str(val))
+            return results
+        except Exception as e:
+            logger.error(f"Error in JsonPath extraction '{selector}': {e}")
             return []
 
     def _extract_regex(self, selector: str) -> list[str]:
         """正则表达式提取"""
         try:
-            results = re.findall(selector, self.raw_content)
+            content_str = self.raw_content
+            # 如果 raw_content 不是字符串（如 JSON 对象），尝试转换为字符串
+            if not isinstance(content_str, str):
+                if self.content_type == "json" and self._json_data is not None:
+                    content_str = json.dumps(self._json_data, ensure_ascii=False)
+                else:
+                    return []
+
+            results = re.findall(selector, content_str)
             if results and isinstance(results[0], tuple):
                 # 如果有分组，返回第一个分组
                 return [r[0] for r in results]
             return results
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error in Regex extraction '{selector}': {e}")
             return []

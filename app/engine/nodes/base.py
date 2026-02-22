@@ -72,7 +72,6 @@ class BaseNode(ABC):
 
     @abstractmethod
     async def execute(self, context: CrawlContext) -> NodeResult:
-        pass
         """
         执行节点逻辑
 
@@ -82,20 +81,4 @@ class BaseNode(ABC):
         Returns:
             NodeResult 执行结果
         """
-        ...
-
-    def _merge_headers(self, context: CrawlContext) -> dict:
-        """合并节点配置的 Headers 和上下文中的 Headers"""
-        headers = dict(context.headers)
-        node_headers = self.request_config.get("headers", {})
-        if node_headers:
-            headers.update(node_headers)
-        return headers
-
-    def _merge_cookies(self, context: CrawlContext) -> dict:
-        """合并节点配置的 Cookies 和上下文中的 Cookies"""
-        cookies = dict(context.cookies)
-        node_cookies = self.request_config.get("cookies", {})
-        if node_cookies:
-            cookies.update(node_cookies)
-        return cookies
+        pass

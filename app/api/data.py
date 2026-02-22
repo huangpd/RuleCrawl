@@ -38,9 +38,13 @@ async def list_data(
     items = []
     async for doc in cursor:
         # 转换 ObjectId 为字符串，防止 json 序列化报错
-        if "_id" in doc:
-            doc["_id"] = str(doc["_id"])
-        items.append(doc)
+        # 仅返回必要字段，避免暴露内部 ID
+        item = {
+            "source_url": doc.get("source_url"),
+            "crawl_time": doc.get("crawl_time") or doc.get("crawled_at"),  # 兼容旧数据
+            "data": doc.get("data"),
+        }
+        items.append(item)
 
     return {
         "total": total,

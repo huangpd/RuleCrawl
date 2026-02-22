@@ -227,38 +227,6 @@ function renderProjectList(projects) {
     container.appendChild(tableWrap);
 }
 
-/** 渲染项目分页 */
-function renderProjectPagination(result) {
-    let container = document.getElementById('projectPagination');
-    if (!container) {
-        // 如果不存在，创建它并添加到 projectGrid 之后
-        container = document.createElement('div');
-        container.id = 'projectPagination';
-        container.className = 'pagination';
-        // 插入到 projectGrid 后面
-        const grid = document.getElementById('projectGrid');
-        if (grid && grid.parentNode) {
-            grid.parentNode.appendChild(container); // Append to parent (container)
-        }
-    }
-
-    const totalPages = result.total_pages || 1;
-    const page = result.page || 1;
-    const total = result.total || 0;
-
-    if (total === 0) {
-        container.innerHTML = '';
-        return;
-    }
-
-    let html = '';
-    html += `<button class="btn btn-ghost btn-sm" onclick="changeProjectPage(${Math.max(1, page - 1)})" ${page <= 1 ? 'disabled' : ''}>◀</button>`;
-    html += `<span class="pagination-info">第 ${page} / ${totalPages} 页 (共 ${total} 条)</span>`;
-    html += `<button class="btn btn-ghost btn-sm" onclick="changeProjectPage(${Math.min(totalPages, page + 1)})" ${page >= totalPages ? 'disabled' : ''}>▶</button>`;
-
-    container.innerHTML = html;
-}
-
 /** 选择项目 */
 async function selectProject(project) {
     app.state.currentProjectId = project._id;
@@ -447,7 +415,7 @@ function renderDataTable(result) {
     result.items.forEach((item, i) => {
         html += '<tr>';
         html += `<td>${(result.page - 1) * result.page_size + i + 1}</td>`;
-        const cleanUrl = (item.source_url || '').replace(/['"]/g, '');
+        const cleanUrl = (item.source_url || '');
         html += `<td><a href="${cleanUrl}" target="_blank" title="${cleanUrl}">${cleanUrl.substring(0, 50)}...</a></td>`;
         keys.forEach(k => {
             const val = escapeHtml(item.data?.[k] || '');

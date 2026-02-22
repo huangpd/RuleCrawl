@@ -305,9 +305,14 @@ class FlowManager:
                 if node.get("callback_node_id") == list_node_config["_id"]:
                     return node
         # 如果没有明确的回调指向，查找项目中的下一页节点
-        for node in self.nodes.values():
-            if node["node_type"] == "next":
-                return node
+        # ⚠️ 逻辑修正：严格模式下不应随意匹配 NextNode，必须由 NextNode 显式指向 ListPage (callback_node_id)
+        # 或者 ListPage 显式配置 next_page_node_id (当前配置结构不支持)
+        # 原有的"随便找一个 NextNode"的逻辑在多列表页场景下会导致严重错误
+        # 因此移除兜底逻辑，强制要求 NextNode.callback_node_id == ListPage._id
+
+        # for node in self.nodes.values():
+        #     if node["node_type"] == "next":
+        #         return node
         return None
 
     async def _handle_next_result(self, result: NodeResult, context: CrawlContext):

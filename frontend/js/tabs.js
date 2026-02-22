@@ -455,7 +455,8 @@ function parseJSONHeaders(text) {
     }
 
     // 2. 尝试宽松执行 (支持单引号, None, True, False, 尾随逗号)
-    // 注意：使用 new Function 存在一定安全风险，但在开发者工具场景下通常可接受
+    // ⚠️ 安全风险警告：使用 new Function 执行用户输入的代码存在 XSS 风险。
+    // 在生产环境中应严格校验或使用更安全的解析器。当前实现假定此工具仅在受信任的开发环境中使用。
     try {
         const fn = new Function('None', 'True', 'False', `return (${text});`);
         const result = fn(null, true, false);
