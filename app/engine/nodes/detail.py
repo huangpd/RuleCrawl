@@ -84,7 +84,7 @@ class DetailNode(BaseNode):
                 "task_id": context.task_id,
                 "node_id": self.config.get("_id"),
                 "source_url": context.url,
-                "crawled_at": datetime.now(timezone.utc),
+                "crawl_time": datetime.now(timezone.utc),
                 "data": extracted_data,
             }
             await db.data_store.insert_one(record)
@@ -92,6 +92,6 @@ class DetailNode(BaseNode):
 
         return NodeResult(
             success=True,
-            extracted_data=extracted_data,
+            data=extracted_data,
             context=context
         )

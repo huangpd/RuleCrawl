@@ -25,8 +25,8 @@ class StartNode(BaseNode):
             return NodeResult(success=False, error="起始页未配置 URL")
 
         method = self.request_config.get("method", "GET")
-        headers = self._merge_headers(context)
-        cookies = self._merge_cookies(context)
+        headers = self.merge_headers(context.headers)
+        cookies = self.merge_cookies(context.cookies)
         body = self.request_config.get("body")
         content_type = self.request_config.get("content_type")
 

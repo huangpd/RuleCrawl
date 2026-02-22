@@ -70,6 +70,8 @@ async def fetch(
 
     logger.info("HTTP 请求: %s %s", method, url)
     client = _client
+    is_temp_client = False
+
     if client is None:
         # 降级：若全局客户端未初始化，创建临时客户端
         logger.warning("全局 HTTP 客户端未初始化，使用临时客户端（性能较低）")
@@ -78,6 +80,7 @@ async def fetch(
             follow_redirects=True,
             verify=False,
         )
+        is_temp_client = True
 
     try:
         if method.upper() == "POST":
@@ -96,5 +99,5 @@ async def fetch(
         return response
     finally:
         # 仅关闭临时客户端
-        if _client is None and client is not None:
+        if is_temp_client and client is not None:
             await client.aclose()

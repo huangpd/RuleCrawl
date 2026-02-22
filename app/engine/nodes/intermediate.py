@@ -30,8 +30,8 @@ class IntermediateNode(BaseNode):
             )
 
         method = self.request_config.get("method", "GET")
-        headers = self._merge_headers(context)
-        cookies = self._merge_cookies(context)
+        headers = self.merge_headers(context.headers)
+        cookies = self.merge_cookies(context.cookies)
         body = self.request_config.get("body")
 
         try:
