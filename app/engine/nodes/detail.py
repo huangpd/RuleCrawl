@@ -33,11 +33,16 @@ class DetailNode(BaseNode):
                 )
                 html = response.text
             except Exception as e:
-                return NodeResult(success=False, error=str(e), context=context)
+                logger.error("详情页请求失败: URL=%s, Error=%s", context.url, e)
+                return NodeResult(success=False, error=f"网络请求失败: {str(e)}", context=context)
 
         # 2. 解析数据
-        parser = UniversalParser(html, content_type=content_type)
-        extracted_data = {}
+        try:
+            parser = UniversalParser(html, content_type=content_type)
+            extracted_data = {}
+        except Exception as e:
+            logger.error("解析器初始化失败: URL=%s, Error=%s", context.url, e)
+            return NodeResult(success=False, error=f"解析初始化失败: {str(e)}", context=context)
         
         field_rules = self.parse_rules.get("fields", [])
         for rule in field_rules:

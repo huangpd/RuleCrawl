@@ -96,6 +96,9 @@ async def fetch(
         final_headers["Content-Type"] = content_type
 
     logger.info("HTTP 请求: %s %s", method, url)
+    import time
+    start_time = time.time()
+    
     client = _client
     is_temp_client = False
 
@@ -123,7 +126,14 @@ async def fetch(
                 headers=final_headers,
                 cookies=cookies or {},
             )
+        
+        duration = time.time() - start_time
+        logger.info("HTTP 响应: [%d] %s (耗时: %.2fs)", response.status_code, url, duration)
         return response
+    except Exception as e:
+        duration = time.time() - start_time
+        logger.error("HTTP 请求失败: %s %s (耗时: %.2fs, 错误: %s)", method, url, duration, e)
+        raise e
     finally:
         # 仅关闭临时客户端
         if is_temp_client and client is not None:

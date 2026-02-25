@@ -119,14 +119,24 @@ class FlowManager:
                 }},
             )
 
-        except Exception as e:
-            logger.error("工作流执行异常: %s", e, exc_info=True)
+        except ValueError as e:
+            logger.error("工作流配置错误: %s", e)
             await db.tasks.update_one(
                 {"_id": self.task_id},
                 {"$set": {
                     "status": "failed",
                     "finished_at": datetime.now(timezone.utc),
-                    "error_message": str(e),
+                    "error_message": f"配置错误: {str(e)}",
+                }},
+            )
+        except Exception as e:
+            logger.error("工作流运行时异常: %s", e, exc_info=True)
+            await db.tasks.update_one(
+                {"_id": self.task_id},
+                {"$set": {
+                    "status": "failed",
+                    "finished_at": datetime.now(timezone.utc),
+                    "error_message": f"运行时异常: {str(e)}",
                 }},
             )
 
@@ -137,20 +147,30 @@ class FlowManager:
 
         node_config = self.nodes.get(node_id)
         if not node_config:
+            logger.error("找不到节点配置: %s", node_id)
             return
 
-        node = self.create_node_instance(node_config)
-        result = await node.execute(context)
-
-        db = get_db()
-
-        if not result.success:
-            # 记录错误但不中断整个流程
+        try:
+            node = self.create_node_instance(node_config)
+            result = await node.execute(context)
+        except Exception as e:
+            logger.error("节点 [%s] 执行发生崩溃: %s", node_config.get("name", node_id), e, exc_info=True)
+            db = get_db()
             await db.tasks.update_one(
                 {"_id": self.task_id},
                 {"$inc": {"stats.errors": 1}},
             )
-            logger.warning("节点 [%s] 执行失败: %s", node.name, result.error)
+            return
+
+        db = get_db()
+
+        if not result.success:
+            # 记录业务逻辑错误（如 404，解析不到内容）
+            await db.tasks.update_one(
+                {"_id": self.task_id},
+                {"$inc": {"stats.errors": 1}},
+            )
+            logger.warning("节点 [%s] 业务处理失败: %s", node.name, result.error)
             return
 
         # 更新请求计数
@@ -206,13 +226,15 @@ class FlowManager:
                     async with semaphore:
                         if self._stop_flag:
                             return
-                        # 将列表页提取的附加字段（如作者）注入到子上下文的 parent_data
+                        # 合并父级已有的数据和当前节点提取的新数据，确保多级透传不丢失
+                        new_parent_data = current_context.parent_data.copy()
                         extra_fields = current_result.url_data.get(url, {})
                         if extra_fields:
+                            new_parent_data.update(extra_fields)
                             logger.info("FlowManager 传递透传数据: URL=%s, Data=%s", url, extra_fields)
 
                         child_context = current_context.clone(
-                            url=url, html="", parent_data=extra_fields
+                            url=url, html="", parent_data=new_parent_data
                         )
                         await self._execute_node(current_result.callback_node_id, child_context)
 

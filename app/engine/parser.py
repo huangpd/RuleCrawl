@@ -41,6 +41,7 @@ class UniversalParser:
         if isinstance(content, Selector):
             self._selector = content
             self.content_type = "html"
+            self.raw_content = content.get()
         elif content_type == "html":
             if isinstance(content, str):
                 self._selector = Selector(text=content)
@@ -114,8 +115,10 @@ class UniversalParser:
                     expr = jsonpath_parse(item_selector)
                     matches = expr.find(self._json_data)
                     return [UniversalParser(m.value, "json") for m in matches]
+        except (ValueError, TypeError) as e:
+            logger.error(f"Selector format error for {selector_type} '{item_selector}': {e}")
         except Exception as e:
-            logger.error(f"Error extracting items: {e}")
+            logger.error(f"Unexpected error extracting items with {selector_type} '{item_selector}': {e}")
         return []
 
     def _extract_xpath(self, selector: str) -> list[str]:
@@ -126,7 +129,8 @@ class UniversalParser:
             results = self._selector.xpath(selector).getall()
             return [str(r).strip() for r in results if str(r).strip()]
         except Exception as e:
-            logger.error(f"Error in XPath extraction '{selector}': {e}")
+            # lxml 可能抛出的异常类型较多，此处保留 Exception 但增加详细日志
+            logger.error(f"XPath evaluation error '{selector}': {e}")
             return []
 
     def _extract_css(self, selector: str) -> list[str]:
@@ -137,7 +141,7 @@ class UniversalParser:
             results = self._selector.css(selector).getall()
             return [r.strip() for r in results if r.strip()]
         except Exception as e:
-            logger.error(f"Error in CSS extraction '{selector}': {e}")
+            logger.error(f"CSS evaluation error '{selector}': {e}")
             return []
 
     def _extract_jsonpath(self, selector: str) -> list[str]:
@@ -161,7 +165,7 @@ class UniversalParser:
                     results.append(str(val))
             return results
         except Exception as e:
-            logger.error(f"Error in JsonPath extraction '{selector}': {e}")
+            logger.error(f"JsonPath evaluation error '{selector}': {e}")
             return []
 
     def _extract_regex(self, selector: str) -> list[str]:
@@ -180,8 +184,11 @@ class UniversalParser:
                 # 如果有分组，返回第一个分组
                 return [r[0] for r in results]
             return results
+        except re.error as e:
+            logger.error(f"Regex syntax error '{selector}': {e}")
+            return []
         except Exception as e:
-            logger.error(f"Error in Regex extraction '{selector}': {e}")
+            logger.error(f"Unexpected error in Regex extraction '{selector}': {e}")
             return []
 
     @staticmethod

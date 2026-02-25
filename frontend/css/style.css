@@ -210,31 +210,6 @@ body {
     background: rgba(255, 255, 255, 0.1);
 }
 
-.btn-delete-project {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    background: transparent;
-    border: none;
-    color: var(--text-dim);
-    cursor: pointer;
-    font-size: 14px;
-    opacity: 0;
-    transition: all 0.2s;
-    padding: 4px;
-    border-radius: 4px;
-}
-
-.project-card:hover .btn-delete-project {
-    opacity: 1;
-}
-
-.btn-delete-project:hover {
-    color: var(--accent-red);
-    background: rgba(239, 68, 68, 0.1);
-    transform: scale(1.1);
-}
-
 /* ---- 左侧面板 ---- */
 .sidebar {
     background: rgba(15, 12, 41, 0.6);
