@@ -7,6 +7,10 @@ from urllib.parse import urljoin
 from app.engine.nodes.base import BaseNode, NodeResult
 from app.engine.context import CrawlContext
 from app.engine.parser import UniversalParser
+from app.utils.http_client import fetch
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class NextPageNode(BaseNode):
@@ -21,6 +25,28 @@ class NextPageNode(BaseNode):
 
     async def execute(self, context: CrawlContext) -> NodeResult:
         html = context.html
+        content_type = context.content_type
+
+        # ── 自动抓取逻辑 (兜底) ──
+        if not html and context.url:
+            if context.url.startswith("data://"):
+                 return NodeResult(success=False, error="下一页节点无法处理 data:// 协议的自动抓取")
+
+            try:
+                logger.info("下一页节点正在兜底抓取内容: %s", context.url)
+                response = await fetch(
+                    url=context.url,
+                    method="GET",
+                    headers=self.merge_headers(context.headers),
+                    cookies=self.merge_cookies(context.cookies),
+                )
+                html = response.text
+                resp_content_type = response.headers.get("content-type", "")
+                content_type = "json" if "json" in resp_content_type else "html"
+                context = context.clone(html=html, content_type=content_type)
+            except Exception as e:
+                return NodeResult(success=False, error=f"翻页提取时抓取失败: {str(e)}")
+
         if not html:
             return NodeResult(success=False, error="下一页节点没有收到 HTML 内容")
 
@@ -33,11 +59,12 @@ class NextPageNode(BaseNode):
             # 没有翻页选择器，结束翻页
             return NodeResult(success=True, next_url=None, context=context)
 
-        # 检查页数限制
+        # 检查页数限制 (context.page_number 从 1 开始)
         if context.page_number >= max_pages:
+            logger.info("达到最大翻页限制: %d", max_pages)
             return NodeResult(success=True, next_url=None, context=context)
 
-        parser = UniversalParser(html, context.content_type)
+        parser = UniversalParser(html, content_type)
         next_links = parser.extract(selector, selector_type)
 
         if next_links:

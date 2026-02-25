@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class DetailNode(BaseNode):
     async def execute(self, context: CrawlContext) -> NodeResult:
-        # logger.info(f"Executing DetailNode for {context.url}")
+        logger.info(f"Executing DetailNode for {context.url}")
         
         # 1. 请求页面
         content_type = "html"
@@ -45,9 +45,17 @@ class DetailNode(BaseNode):
             selector = rule.get("selector")
             selector_type = rule.get("selector_type", "xpath")
             if name and selector:
-                value = parser.extract_first(selector, selector_type)
+                value = parser.extract_all(selector, selector_type)
+                # ── 应用清洗规则 ──
+                clean_rules = rule.get("clean_rules", [])
+                if clean_rules:
+                    value = UniversalParser.apply_clean_rules(value, clean_rules)
+                
                 if value:
                     extracted_data[name] = value
+
+        # ── 自动注入元数据字段 ──
+        extracted_data["detail_url"] = context.url
 
         # 合并父节点传递的数据
         if context.parent_data:

@@ -8,6 +8,16 @@ from typing import Optional, Literal
 from datetime import datetime
 
 
+class CleanRule(BaseModel):
+    """字符串清洗规则"""
+    type: Literal["replace", "trim", "prefix", "suffix", "regex_sub"] = Field(
+        ..., description="清洗类型"
+    )
+    old: Optional[str] = Field(None, description="待替换内容 (replace用)")
+    new: Optional[str] = Field(None, description="替换后内容 (replace用)")
+    value: Optional[str] = Field(None, description="附加内容 (prefix/suffix用)")
+
+
 class FieldRule(BaseModel):
     """字段提取规则"""
     name: str = Field(..., description="字段名称")
@@ -17,6 +27,7 @@ class FieldRule(BaseModel):
     )
     is_link: bool = Field(False, description="是否为链接（用于列表页提取）")
     attr: Optional[str] = Field(None, description="提取属性（如 href, src）")
+    clean_rules: list[CleanRule] = Field(default_factory=list, description="清洗规则列表")
 
 
 class RequestConfig(BaseModel):
