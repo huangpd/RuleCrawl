@@ -1,16 +1,33 @@
 """
 HTTP 请求客户端封装
 基于 httpx 异步客户端，复用连接池以提升性能
+支持自动重试（最多 3 次，指数退避）
 """
 
 import logging
+from typing import Optional
 import httpx
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    before_sleep_log,
+)
 from app.config import DEFAULT_USER_AGENT, REQUEST_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
 # 全局共享的 AsyncClient 实例（通过 lifespan 管理生命周期）
 _client: httpx.AsyncClient | None = None
+
+# 需要重试的异常类型：网络超时、连接错误、读写错误
+_RETRY_EXCEPTIONS = (
+    httpx.TimeoutException,
+    httpx.ConnectError,
+    httpx.ReadError,
+    httpx.RemoteProtocolError,
+)
 
 
 async def init_client():
@@ -37,17 +54,24 @@ async def close_client():
         logger.info("HTTP 客户端已关闭")
 
 
+@retry(
+    stop=stop_after_attempt(3),                          # 最多重试 3 次
+    wait=wait_exponential(multiplier=1, min=1, max=10),  # 退避：1s → 2s → 4s（上限 10s）
+    retry=retry_if_exception_type(_RETRY_EXCEPTIONS),    # 仅对网络异常重试
+    before_sleep=before_sleep_log(logger, logging.WARNING),  # 重试前打印日志
+    reraise=True,                                        # 3 次全部失败后重新抛出异常
+)
 async def fetch(
     url: str,
     method: str = "GET",
-    headers: dict = None,
-    cookies: dict = None,
-    body: str = None,
-    content_type: str = None,
+    headers: Optional[dict] = None,
+    cookies: Optional[dict] = None,
+    body: Optional[str] = None,
+    content_type: Optional[str] = None,
     timeout: int = REQUEST_TIMEOUT,
 ) -> httpx.Response:
     """
-    发起 HTTP 请求（复用全局连接池）
+    发起 HTTP 请求（复用全局连接池，自动重试）
 
     Args:
         url: 请求目标 URL
@@ -60,6 +84,9 @@ async def fetch(
 
     Returns:
         httpx.Response 响应对象
+
+    Raises:
+        httpx.TimeoutException / httpx.ConnectError 等: 3 次重试均失败后抛出
     """
     # 合并默认请求头
     final_headers = {"User-Agent": DEFAULT_USER_AGENT}

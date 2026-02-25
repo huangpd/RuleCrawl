@@ -30,7 +30,8 @@ dependencies = [
     "cssselect==1.2.0",
     "parsel==1.9.0",
     "jsonpath-ng==1.6.1",
-    "python-dotenv==1.0.1"
+    "python-dotenv==1.0.1",
+    "tenacity>=9.0.0"
 ]
 
 [project.urls]
