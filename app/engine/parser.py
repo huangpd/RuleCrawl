@@ -25,23 +25,24 @@ class UniversalParser:
     - regex: 正则表达式（基于 re）
     """
 
-    def __init__(self, content: Union[str, dict, list], content_type: str = "html"):
+    def __init__(self, content: Union[str, dict, list, Selector], content_type: str = "html"):
         """
         初始化解析器
 
         Args:
-            content: 原始内容（HTML 字符串, JSON 字符串, 或 Python 对象）
+            content: 原始内容（HTML 字符串, JSON 对象, 或已有的 Selector 对象）
             content_type: 内容类型 html / json / text
         """
         self.raw_content = content
         self.content_type = content_type
         self._selector = None
-        self._tree = None
         self._json_data = None
 
-        if content_type == "html":
+        if isinstance(content, Selector):
+            self._selector = content
+            self.content_type = "html"
+        elif content_type == "html":
             if isinstance(content, str):
-                self._tree = etree.HTML(content)
                 self._selector = Selector(text=content)
         elif content_type == "json":
             if isinstance(content, (dict, list)):
@@ -84,53 +85,43 @@ class UniversalParser:
         results = self.extract(selector, selector_type)
         return results[0].strip() if results else default
 
+    def extract_all(
+        self, selector: str, selector_type: str = "xpath", default: str = ""
+    ) -> str:
+
+        results = self.extract(selector, selector_type)
+        return ''.join(results) if results else default
+
     def extract_items(
         self, item_selector: str, selector_type: str = "xpath"
     ) -> list["UniversalParser"]:
         """
         列表页专用：按 item_selector 切割出子区块，返回子解析器列表
-
-        Args:
-            item_selector: 列表项容器选择器
-            selector_type: 选择器类型
-
-        Returns:
-            每个列表项的 UniversalParser 实例列表
         """
         try:
             if selector_type == "xpath":
-                if self._tree is not None:
-                    elements = self._tree.xpath(item_selector)
-                    return [
-                        UniversalParser(
-                            etree.tostring(el, encoding="unicode", method="html"),
-                            "html",
-                        )
-                        for el in elements
-                    ]
+                if self._selector is not None:
+                    items = self._selector.xpath(item_selector)
+                    return [UniversalParser(item) for item in items]
             elif selector_type == "css":
                 if self._selector is not None:
                     items = self._selector.css(item_selector)
-                    return [
-                        UniversalParser(item.get(), "html") for item in items
-                    ]
+                    return [UniversalParser(item) for item in items]
             elif selector_type == "jsonpath":
                 if self._json_data is not None:
                     expr = jsonpath_parse(item_selector)
                     matches = expr.find(self._json_data)
-                    return [
-                        UniversalParser(m.value, "json") for m in matches
-                    ]
+                    return [UniversalParser(m.value, "json") for m in matches]
         except Exception as e:
-            logger.error(f"Error extracting items with selector '{item_selector}' ({selector_type}): {e}")
+            logger.error(f"Error extracting items: {e}")
         return []
 
     def _extract_xpath(self, selector: str) -> list[str]:
         """XPath 提取"""
-        if self._tree is None:
+        if self._selector is None:
             return []
         try:
-            results = self._tree.xpath(selector)
+            results = self._selector.xpath(selector).getall()
             return [str(r).strip() for r in results if str(r).strip()]
         except Exception as e:
             logger.error(f"Error in XPath extraction '{selector}': {e}")
@@ -190,3 +181,37 @@ class UniversalParser:
         except Exception as e:
             logger.error(f"Error in Regex extraction '{selector}': {e}")
             return []
+
+    @staticmethod
+    def apply_clean_rules(value: str, clean_rules: list[dict]) -> str:
+        """
+        应用字符串清洗规则（replace, trim, prefix, suffix, regex_sub）
+        """
+        if not value or not clean_rules:
+            return value
+
+        for rule in clean_rules:
+            try:
+                r_type = rule.get("type")
+                if r_type == "trim":
+                    value = value.strip()
+                elif r_type == "replace":
+                    old_val = rule.get("old", "")
+                    new_val = rule.get("new", "")
+                    value = value.replace(old_val, new_val)
+                elif r_type == "regex_sub":
+                    pattern = rule.get("old", "")
+                    repl = rule.get("new", "")
+                    if pattern:
+                        value = re.sub(pattern, repl, value)
+                elif r_type == "prefix":
+                    prefix = rule.get("value", "")
+                    value = prefix + value
+                elif r_type == "suffix":
+                    suffix = rule.get("value", "")
+                    value = value + suffix
+            except Exception as e:
+                logger.error("清洗规则执行失败 [%s]: %s", rule.get("type"), e)
+                # 继续执行后续规则，不中断流程
+        
+        return value

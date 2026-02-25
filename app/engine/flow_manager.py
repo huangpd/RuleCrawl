@@ -189,18 +189,16 @@ class FlowManager:
     ):
         """
         处理列表页结果：并行处理子链接 + 迭代翻页
-
-        使用 while 循环替代递归调用，避免深度翻页时栈溢出。
         """
         current_result = result
-        current_context = context
+        current_context = context  # 这里的 context 现在是 updated_context，包含了 HTML
         db = get_db()
 
         while True:
             if self._stop_flag:
                 return
 
-            # 1. 并行处理当前页的子链接 / 数据项
+            # 1. 并行处理当前页的子链接 / 数据项 (使用 child_context，不影响主循环 context)
             if (current_result.urls or current_result.items) and current_result.callback_node_id:
                 semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
@@ -242,36 +240,44 @@ class FlowManager:
 
                 await asyncio.gather(*tasks, return_exceptions=True)
 
-            # 2. 查找是否有 NextPage 节点进行翻页
-            next_node_config = self._find_next_node_for_list(list_node_config)
-            if not next_node_config:
-                break  # 无翻页节点，结束循环
+            # 2. 确定下一页 URL
+            next_url = current_result.next_url  # 优先使用集成在列表页中的翻页链接
+            next_node_config = None
 
-            next_node = self.create_node_instance(next_node_config)
-            next_result = await next_node.execute(current_context)
+            if not next_url:
+                # 兼容模式：查找是否有独立的 NextPage 节点
+                next_node_config = self._find_next_node_for_list(list_node_config)
+                if next_node_config:
+                    next_node = self.create_node_instance(next_node_config)
+                    next_result = await next_node.execute(current_context)
+                    if next_result.success:
+                        next_url = next_result.next_url
 
-            if not next_result.success or not next_result.next_url:
-                break  # 翻页结束（无下一页或翻页失败）
+            if not next_url:
+                break  # 无翻页 URL，结束循环
 
             # 3. 获取下一页内容
             try:
                 headers = current_context.headers
                 cookies = current_context.cookies
                 response = await fetch(
-                    url=next_result.next_url,
+                    url=next_url,
                     headers=headers,
                     cookies=cookies,
                 )
-                next_context = (next_result.context or current_context).clone(
-                    url=next_result.next_url,
+                next_context = current_context.clone(
+                    url=next_url,
                     html=response.text,
+                    page_number=current_context.page_number + 1,
                 )
             except Exception as e:
                 logger.warning("翻页请求失败: %s", e)
-                break  # 翻页请求异常，结束循环
+                break 
 
-            # 4. 在新的页面上重新执行 ListNode，得到新结果
-            callback_id = next_node_config.get("callback_node_id") or list_node_config["_id"]
+            # 4. 在新页面上重新执行列表页
+            # 如果是集成模式，继续用当前列表页；如果是独立模式，用 NextNode 的回调
+            callback_id = (next_node_config.get("callback_node_id") if next_node_config 
+                           else list_node_config["_id"])
             callback_config = self.nodes.get(callback_id)
             if not callback_config:
                 break

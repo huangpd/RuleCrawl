@@ -86,20 +86,50 @@ async def update_node(node_id: str, node: NodeUpdate):
 
 @router.delete("/nodes/{node_id}")
 async def delete_node(node_id: str):
-    """删除节点（自动清理 callback 引用）"""
+    """
+    删除节点及其所有后续子节点（递归级联删除）
+    """
     db = get_db()
-    node = await db.nodes.find_one({"_id": node_id})
-    if not node:
+    
+    # 1. 验证要删除的根节点是否存在
+    root_node = await db.nodes.find_one({"_id": node_id})
+    if not root_node:
         raise HTTPException(status_code=404, detail="节点不存在")
 
-    # 清除所有父节点对该节点的 callback 引用
+    # 2. 递归收集所有下游节点 ID
+    to_delete_ids = set()
+    
+    async def collect_descendants(current_id):
+        if not current_id or current_id in to_delete_ids:
+            return
+        to_delete_ids.add(current_id)
+        
+        # 查找以此节点为 callback 的节点（正向链路）
+        node = await db.nodes.find_one({"_id": current_id})
+        if node and node.get("callback_node_id"):
+            await collect_descendants(node["callback_node_id"])
+            
+        # 查找是否有翻页节点指向此节点（逆向翻页链路，也要处理）
+        # 如果当前是 ListPage，删了它，那么指向它的 NextPage 也该删
+        async for next_node in db.nodes.find({"node_type": "next", "callback_node_id": current_id}):
+            await collect_descendants(next_node["_id"])
+
+    await collect_descendants(node_id)
+
+    # 3. 清理所有父节点对这批待删节点的 callback 引用（防止悬空）
+    # 只有那些不在 to_delete_ids 中的父节点需要清理
     await db.nodes.update_many(
-        {"callback_node_id": node_id},
+        {"callback_node_id": {"$in": list(to_delete_ids)}},
         {"$set": {"callback_node_id": None}},
     )
 
-    await db.nodes.delete_one({"_id": node_id})
-    return {"message": "节点已删除", "node_id": node_id}
+    # 4. 执行批量删除
+    result = await db.nodes.delete_many({"_id": {"$in": list(to_delete_ids)}})
+    
+    return {
+        "message": f"成功删除节点及其子节点，共计 {result.deleted_count} 个",
+        "deleted_ids": list(to_delete_ids)
+    }
 
 
 @router.post("/nodes/{node_id}/set-callback")
