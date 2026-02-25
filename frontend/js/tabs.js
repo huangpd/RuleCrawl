@@ -3,6 +3,119 @@
  * 处理 5 个标签页的表单渲染、数据加载和保存
  */
 
+// ============ 清洗规则编辑器状态 ============
+app.state.currentEditingFieldRow = null; // 当前正在编辑规则的字段行元素
+app.state.tempCleanRules = [];          // 临时存储正在编辑的规则列表
+
+/** 打开清洗规则模态框 */
+function openCleanRulesModal(btn) {
+    const row = btn.closest('.field-row');
+    app.state.currentEditingFieldRow = row;
+    
+    // 获取已有的规则
+    const rulesData = row.dataset.cleanRules;
+    try {
+        app.state.tempCleanRules = rulesData ? JSON.parse(rulesData) : [];
+    } catch (e) {
+        app.state.tempCleanRules = [];
+    }
+
+    renderCleanRulesList();
+    document.getElementById('cleanRulesModal').style.display = 'flex';
+}
+
+/** 关闭清洗规则模态框 */
+function closeCleanRulesModal() {
+    document.getElementById('cleanRulesModal').style.display = 'none';
+    app.state.currentEditingFieldRow = null;
+}
+
+/** 渲染规则列表 */
+function renderCleanRulesList() {
+    const container = document.getElementById('cleanRulesList');
+    container.innerHTML = '';
+    
+    if (app.state.tempCleanRules.length === 0) {
+        container.innerHTML = '<div class="empty-state" style="padding:20px; font-size:13px;">暂无规则，请点击下方按钮添加</div>';
+        return;
+    }
+
+    app.state.tempCleanRules.forEach((rule, index) => {
+        const row = document.createElement('div');
+        row.className = 'field-row clean-rule-row';
+        row.style.marginBottom = '8px';
+        
+        let inputsHtml = '';
+        if (rule.type === 'trim') {
+            inputsHtml = '<span style="flex:1; color:var(--text-dim); font-size:12px;">删除字符串前后的空白字符</span>';
+        } else if (rule.type === 'replace' || rule.type === 'regex_sub') {
+            inputsHtml = `
+                <input class="form-input rule-old" style="flex:1" placeholder="${rule.type === 'replace' ? '待替换字符' : '正则表达式'}" value="${rule.old || ''}">
+                <input class="form-input rule-new" style="flex:1" placeholder="替换为" value="${rule.new || ''}">
+            `;
+        } else if (rule.type === 'prefix' || rule.type === 'suffix') {
+            inputsHtml = `
+                <input class="form-input rule-value" style="flex:1" placeholder="${rule.type === 'prefix' ? '前缀字符串' : '后缀字符串'}" value="${rule.value || ''}">
+            `;
+        }
+
+        row.innerHTML = `
+            <span class="flow-node-badge" style="width:80px; text-align:center; background:var(--glass-bg);">${rule.type.toUpperCase()}</span>
+            ${inputsHtml}
+            <button class="field-remove-btn" onclick="removeCleanRuleRow(${index})">✕</button>
+        `;
+        container.appendChild(row);
+    });
+}
+
+/** 添加一行规则 */
+function addCleanRuleRow(type) {
+    // 先同步当前输入的数据到 tempCleanRules，防止丢失
+    syncCleanRulesFromUI();
+    app.state.tempCleanRules.push({ type });
+    renderCleanRulesList();
+}
+
+/** 移除一行规则 */
+function removeCleanRuleRow(index) {
+    syncCleanRulesFromUI();
+    app.state.tempCleanRules.splice(index, 1);
+    renderCleanRulesList();
+}
+
+/** 从 UI 同步数据到临时状态 */
+function syncCleanRulesFromUI() {
+    const rows = document.querySelectorAll('#cleanRulesList .clean-rule-row');
+    rows.forEach((row, index) => {
+        const rule = app.state.tempCleanRules[index];
+        if (!rule) return;
+
+        if (rule.type === 'replace' || rule.type === 'regex_sub') {
+            rule.old = row.querySelector('.rule-old')?.value;
+            rule.new = row.querySelector('.rule-new')?.value;
+        } else if (rule.type === 'prefix' || rule.type === 'suffix') {
+            rule.value = row.querySelector('.rule-value')?.value;
+        }
+    });
+}
+
+/** 确认保存规则到字段行 */
+function confirmSaveCleanRules() {
+    syncCleanRulesFromUI();
+    if (app.state.currentEditingFieldRow) {
+        app.state.currentEditingFieldRow.dataset.cleanRules = JSON.stringify(app.state.tempCleanRules);
+        
+        // 更新按钮文案，显示规则数量
+        const btn = app.state.currentEditingFieldRow.querySelector('.field-clean-btn');
+        if (btn) {
+            btn.textContent = app.state.tempCleanRules.length > 0 ? `✨ 清洗(${app.state.tempCleanRules.length})` : '✨ 清洗';
+            btn.classList.toggle('active', app.state.tempCleanRules.length > 0);
+        }
+    }
+    closeCleanRulesModal();
+    showToast('规则已存入字段配置', 'success');
+}
+
 /** 切换标签页 */
 function switchTab(tabId) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -141,7 +254,6 @@ function collectNodeData(type) {
             url: document.getElementById(`${type}-url`)?.value || '',
             method: document.getElementById(`${type}-method`)?.value || 'GET',
             headers: parseJSONHeaders(document.getElementById(`${type}-headers`)?.value),
-            // cookies removed
             body: document.getElementById(`${type}-body`)?.value || null,
         },
         parse_rules: {
@@ -155,7 +267,7 @@ function collectNodeData(type) {
         callback_node_id: document.getElementById(`${type}-callback`)?.value || null,
     };
 
-    // 翻页配置
+    // 翻页配置收集
     const pgSelector = document.getElementById(`${type}-pg-selector`)?.value;
     if (pgSelector) {
         data.pagination = {
@@ -163,6 +275,8 @@ function collectNodeData(type) {
             selector_type: document.getElementById(`${type}-pg-selector-type`)?.value || 'xpath',
             max_pages: parseInt(document.getElementById(`${type}-pg-max`)?.value) || 10,
         };
+    } else {
+        data.pagination = null;
     }
 
     // 详情页字段
@@ -253,15 +367,24 @@ function addDetailField(fieldData = null) {
     const container = document.getElementById('detail-fields');
     const row = document.createElement('div');
     row.className = 'field-row';
+    
+    // 初始化 cleanRules 数据
+    const cleanRulesJson = fieldData && fieldData.clean_rules ? JSON.stringify(fieldData.clean_rules) : '[]';
+    row.dataset.cleanRules = cleanRulesJson;
+    const rulesCount = fieldData && fieldData.clean_rules ? fieldData.clean_rules.length : 0;
+
     row.innerHTML = `
-        <input class="form-input field-name" placeholder="字段名">
-        <select class="form-select field-type">
+        <input class="form-input field-name" placeholder="字段名" style="width:100px">
+        <select class="form-select field-type" style="width:80px">
             <option value="xpath">XPath</option>
             <option value="css">CSS</option>
             <option value="jsonpath">JsonPath</option>
             <option value="regex">Regex</option>
         </select>
-        <input class="form-input field-selector" placeholder="选择器表达式">
+        <input class="form-input field-selector" placeholder="选择器表达式" style="flex:1">
+        <button class="btn btn-ghost btn-xs field-clean-btn ${rulesCount > 0 ? 'active' : ''}" onclick="openCleanRulesModal(this)">
+            ${rulesCount > 0 ? `✨ 清洗(${rulesCount})` : '✨ 清洗'}
+        </button>
         <button class="field-remove-btn" onclick="this.parentElement.remove()">✕</button>
     `;
 
@@ -281,8 +404,12 @@ function collectDetailFields() {
         const name = row.querySelector('.field-name')?.value?.trim();
         const selector = row.querySelector('.field-selector')?.value?.trim();
         const selectorType = row.querySelector('.field-type')?.value;
+        const cleanRulesJson = row.dataset.cleanRules;
+        let cleanRules = [];
+        try { cleanRules = cleanRulesJson ? JSON.parse(cleanRulesJson) : []; } catch(e) {}
+
         if (name && selector) {
-            fields.push({ name, selector, selector_type: selectorType });
+            fields.push({ name, selector, selector_type: selectorType, clean_rules: cleanRules });
         }
     });
     return fields;
@@ -306,15 +433,23 @@ function addListField(fieldData = null) {
     if (!container) return;
     const row = document.createElement('div');
     row.className = 'field-row';
+
+    const cleanRulesJson = fieldData && fieldData.clean_rules ? JSON.stringify(fieldData.clean_rules) : '[]';
+    row.dataset.cleanRules = cleanRulesJson;
+    const rulesCount = fieldData && fieldData.clean_rules ? fieldData.clean_rules.length : 0;
+
     row.innerHTML = `
-        <input class="form-input field-name" placeholder="字段名 (如 author)">
-        <select class="form-select field-type">
+        <input class="form-input field-name" placeholder="字段名 (如 author)" style="width:120px">
+        <select class="form-select field-type" style="width:80px">
             <option value="xpath">XPath</option>
             <option value="css">CSS</option>
             <option value="jsonpath">JsonPath</option>
             <option value="regex">Regex</option>
         </select>
-        <input class="form-input field-selector" placeholder="选择器表达式">
+        <input class="form-input field-selector" placeholder="选择器表达式" style="flex:1">
+        <button class="btn btn-ghost btn-xs field-clean-btn ${rulesCount > 0 ? 'active' : ''}" onclick="openCleanRulesModal(this)">
+            ${rulesCount > 0 ? `✨ 清洗(${rulesCount})` : '✨ 清洗'}
+        </button>
         <button class="field-remove-btn" onclick="this.parentElement.remove()">✕</button>
     `;
     if (fieldData) {
@@ -334,8 +469,12 @@ function collectListFields() {
         const name = row.querySelector('.field-name')?.value?.trim();
         const selector = row.querySelector('.field-selector')?.value?.trim();
         const selectorType = row.querySelector('.field-type')?.value;
+        const cleanRulesJson = row.dataset.cleanRules;
+        let cleanRules = [];
+        try { cleanRules = cleanRulesJson ? JSON.parse(cleanRulesJson) : []; } catch(e) {}
+
         if (name && selector) {
-            fields.push({ name, selector, selector_type: selectorType, is_link: false });
+            fields.push({ name, selector, selector_type: selectorType, is_link: false, clean_rules: cleanRules });
         }
     });
     return fields;
