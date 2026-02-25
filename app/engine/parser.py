@@ -75,6 +75,8 @@ class UniversalParser:
             return self._extract_jsonpath(selector)
         elif selector_type == "regex":
             return self._extract_regex(selector)
+        elif selector_type == "text":
+            return [selector]
         else:
             raise ValueError(f"不支持的选择器类型: {selector_type}")
 

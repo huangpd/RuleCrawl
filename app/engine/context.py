@@ -5,7 +5,7 @@
 
 from dataclasses import dataclass, field
 from typing import Optional
-
+import dataclasses
 
 @dataclass
 class CrawlContext:
@@ -44,7 +44,6 @@ class CrawlContext:
 
     def clone(self, **overrides) -> "CrawlContext":
         """克隆上下文并覆盖部分字段"""
-        import dataclasses
         current = dataclasses.asdict(self)
         current.update(overrides)
         return CrawlContext(**current)

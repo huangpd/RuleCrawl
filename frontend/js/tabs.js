@@ -11,7 +11,7 @@ app.state.tempCleanRules = [];          // 临时存储正在编辑的规则列�
 function openCleanRulesModal(btn) {
     const row = btn.closest('.field-row');
     app.state.currentEditingFieldRow = row;
-    
+
     // 获取已有的规则
     const rulesData = row.dataset.cleanRules;
     try {
@@ -34,7 +34,7 @@ function closeCleanRulesModal() {
 function renderCleanRulesList() {
     const container = document.getElementById('cleanRulesList');
     container.innerHTML = '';
-    
+
     if (app.state.tempCleanRules.length === 0) {
         container.innerHTML = '<div class="empty-state" style="padding:20px; font-size:13px;">暂无规则，请点击下方按钮添加</div>';
         return;
@@ -44,7 +44,7 @@ function renderCleanRulesList() {
         const row = document.createElement('div');
         row.className = 'field-row clean-rule-row';
         row.style.marginBottom = '8px';
-        
+
         let inputsHtml = '';
         if (rule.type === 'trim') {
             inputsHtml = '<span style="flex:1; color:var(--text-dim); font-size:12px;">删除字符串前后的空白字符</span>';
@@ -104,7 +104,7 @@ function confirmSaveCleanRules() {
     syncCleanRulesFromUI();
     if (app.state.currentEditingFieldRow) {
         app.state.currentEditingFieldRow.dataset.cleanRules = JSON.stringify(app.state.tempCleanRules);
-        
+
         // 更新按钮文案，显示规则数量
         const btn = app.state.currentEditingFieldRow.querySelector('.field-clean-btn');
         if (btn) {
@@ -367,7 +367,7 @@ function addDetailField(fieldData = null) {
     const container = document.getElementById('detail-fields');
     const row = document.createElement('div');
     row.className = 'field-row';
-    
+
     // 初始化 cleanRules 数据
     const cleanRulesJson = fieldData && fieldData.clean_rules ? JSON.stringify(fieldData.clean_rules) : '[]';
     row.dataset.cleanRules = cleanRulesJson;
@@ -380,6 +380,7 @@ function addDetailField(fieldData = null) {
             <option value="css">CSS</option>
             <option value="jsonpath">JsonPath</option>
             <option value="regex">Regex</option>
+            <option value="text">Text</option>
         </select>
         <input class="form-input field-selector" placeholder="选择器表达式" style="flex:1">
         <button class="btn btn-ghost btn-xs field-clean-btn ${rulesCount > 0 ? 'active' : ''}" onclick="openCleanRulesModal(this)">
@@ -406,7 +407,7 @@ function collectDetailFields() {
         const selectorType = row.querySelector('.field-type')?.value;
         const cleanRulesJson = row.dataset.cleanRules;
         let cleanRules = [];
-        try { cleanRules = cleanRulesJson ? JSON.parse(cleanRulesJson) : []; } catch(e) {}
+        try { cleanRules = cleanRulesJson ? JSON.parse(cleanRulesJson) : []; } catch (e) { }
 
         if (name && selector) {
             fields.push({ name, selector, selector_type: selectorType, clean_rules: cleanRules });
@@ -445,6 +446,7 @@ function addListField(fieldData = null) {
             <option value="css">CSS</option>
             <option value="jsonpath">JsonPath</option>
             <option value="regex">Regex</option>
+            <option value="text">Text</option>
         </select>
         <input class="form-input field-selector" placeholder="选择器表达式" style="flex:1">
         <button class="btn btn-ghost btn-xs field-clean-btn ${rulesCount > 0 ? 'active' : ''}" onclick="openCleanRulesModal(this)">
@@ -471,7 +473,7 @@ function collectListFields() {
         const selectorType = row.querySelector('.field-type')?.value;
         const cleanRulesJson = row.dataset.cleanRules;
         let cleanRules = [];
-        try { cleanRules = cleanRulesJson ? JSON.parse(cleanRulesJson) : []; } catch(e) {}
+        try { cleanRules = cleanRulesJson ? JSON.parse(cleanRulesJson) : []; } catch (e) { }
 
         if (name && selector) {
             fields.push({ name, selector, selector_type: selectorType, is_link: false, clean_rules: cleanRules });

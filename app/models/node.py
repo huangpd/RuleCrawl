@@ -22,7 +22,7 @@ class FieldRule(BaseModel):
     """字段提取规则"""
     name: str = Field(..., description="字段名称")
     selector: str = Field(..., description="选择器表达式")
-    selector_type: Literal["xpath", "css", "jsonpath", "regex"] = Field(
+    selector_type: Literal["xpath", "css", "jsonpath", "regex", "text"] = Field(
         "xpath", description="选择器类型"
     )
     is_link: bool = Field(False, description="是否为链接（用于列表页提取）")
@@ -42,15 +42,15 @@ class RequestConfig(BaseModel):
 
 class ParseRules(BaseModel):
     """解析规则配置"""
-    parser_type: Literal["xpath", "css", "jsonpath", "regex"] = Field(
+    parser_type: Literal["xpath", "css", "jsonpath", "regex", "text"] = Field(
         "xpath", description="解析器类型"
     )
     item_selector: Optional[str] = Field(None, description="列表项选择器（列表页用）")
-    item_selector_type: Optional[Literal["xpath", "css", "jsonpath", "regex"]] = Field(
+    item_selector_type: Optional[Literal["xpath", "css", "jsonpath", "regex", "text"]] = Field(
         None, description="列表项选择器类型"
     )
     link_selector: Optional[str] = Field(None, description="链接选择器（列表页用）")
-    link_selector_type: Optional[Literal["xpath", "css", "jsonpath", "regex"]] = Field(
+    link_selector_type: Optional[Literal["xpath", "css", "jsonpath", "regex", "text"]] = Field(
         None, description="链接选择器类型"
     )
     fields: list[FieldRule] = Field(default_factory=list, description="字段提取规则列表")
@@ -63,7 +63,7 @@ class ParseRules(BaseModel):
 class PaginationConfig(BaseModel):
     """翻页配置"""
     selector: Optional[str] = Field(None, description="下一页链接选择器")
-    selector_type: Literal["xpath", "css", "jsonpath", "regex"] = Field(
+    selector_type: Literal["xpath", "css", "jsonpath", "regex", "text"] = Field(
         "xpath", description="选择器类型"
     )
     max_pages: int = Field(10, description="最大翻页数")
