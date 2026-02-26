@@ -1,128 +1,101 @@
 """
-任务运行 API
+任务管理 API - 分布式版
+基于 RabbitMQ 广播信号实现任务控制
 """
 
 import uuid
+import json
+import aio_pika
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, BackgroundTasks
+
 from app.database import get_db
 from app.engine.flow_manager import FlowManager
 from app.utils.logger import get_logger
+from app.utils.mq_client import get_mq_connection
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["任务管理"])
 
-# 运行中的任务管理器引用（用于停止任务）
-# ⚠️ 注意：此字典仅在当前进程内有效。
-# 多 worker 部署时（如 uvicorn --workers N），各进程独立维护自己的实例，
-# 无法跨进程停止任务。如需多 worker 支持，应改用 Redis 等外部存储。
-_running_managers: dict[str, FlowManager] = {}
-
-
 @router.post("/projects/{project_id}/run")
 async def run_project(project_id: str, background_tasks: BackgroundTasks):
     """启动爬虫任务"""
     db = get_db()
-
-    # 验证项目存在
     project = await db.projects.find_one({"_id": project_id})
-    if not project:
-        raise HTTPException(status_code=404, detail="项目不存在")
+    if not project: raise HTTPException(status_code=404, detail="项目不存在")
 
-    # 验证工作流合法性
     task_id = str(uuid.uuid4())
     manager = FlowManager(project_id, task_id)
+    
+    # 验证逻辑
     errors = await manager.validate()
-    if errors:
-        raise HTTPException(status_code=400, detail={"errors": errors})
+    if errors: raise HTTPException(status_code=400, detail={"errors": errors})
 
     # 创建任务记录
-    task_doc = {
+    await db.tasks.insert_one({
         "_id": task_id,
         "project_id": project_id,
         "status": "pending",
         "started_at": None,
         "finished_at": None,
-        "stats": {
-            "total_requests": 0,
-            "total_items": 0,
-            "errors": 0,
-            "current_page": 0,
-        },
+        "stats": {"total_requests": 0, "total_items": 0, "errors": 0, "current_page": 0},
         "error_message": None,
-    }
-    await db.tasks.insert_one(task_doc)
+    })
 
-    # 更新项目状态
-    await db.projects.update_one(
-        {"_id": project_id}, {"$set": {"status": "running"}}
-    )
+    await db.projects.update_one({"_id": project_id}, {"$set": {"status": "running"}})
 
-    # 后台执行爬虫
-    _running_managers[task_id] = manager
-    logger.info("任务 %s 已加入后台执行队列 (项目: %s)", task_id, project_id)
-
+    # 后台异步启动分布式引擎
     async def run_and_cleanup():
         try:
             await manager.execute()
         except Exception as e:
-            logger.error("任务 %s 执行异常: %s", task_id, e, exc_info=True)
+            logger.error(f"任务 {task_id} 异步启动失败: {e}")
         finally:
-            _running_managers.pop(task_id, None)
-            await db.projects.update_one(
-                {"_id": project_id}, {"$set": {"status": "idle"}}
-            )
-            logger.info("任务 %s 已结束，项目状态已恢复为 idle", task_id)
+            await db.projects.update_one({"_id": project_id}, {"$set": {"status": "idle"}})
 
     background_tasks.add_task(run_and_cleanup)
-
-    return {"task_id": task_id, "message": "任务已启动"}
-
-
-@router.get("/tasks/{task_id}/status")
-async def get_task_status(task_id: str):
-    """查询任务状态"""
-    db = get_db()
-    task = await db.tasks.find_one({"_id": task_id})
-    if not task:
-        raise HTTPException(status_code=404, detail="任务不存在")
-    return task
-
+    return {"task_id": task_id, "message": "任务已分发到分布式队列"}
 
 @router.post("/tasks/{task_id}/stop")
 async def stop_task(task_id: str):
-    """停止任务"""
+    """停止任务 (分布式广播模式)"""
     db = get_db()
     task = await db.tasks.find_one({"_id": task_id})
-    if not task:
-        raise HTTPException(status_code=404, detail="任务不存在")
+    if not task: raise HTTPException(status_code=404, detail="任务不存在")
 
-    manager = _running_managers.get(task_id)
-    if manager:
-        manager.stop()
-        _running_managers.pop(task_id, None)
-        logger.info("任务 %s 已接收停止指令", task_id)
-    else:
-        logger.warning("任务 %s 不在当前进程的运行列表中（可能已结束或在其他 worker）", task_id)
+    # 1. 获取全局 MQ 连接并广播停止信号
+    try:
+        connection = await get_mq_connection()
+        async with connection.channel() as channel:
+            # 声明控制交换机
+            exchange = await channel.declare_exchange("rulecrawl_controls", aio_pika.ExchangeType.FANOUT)
+            # 广播停止消息
+            message_body = json.dumps({"task_id": task_id, "action": "STOP"}).encode()
+            await exchange.publish(aio_pika.Message(body=message_body), routing_key="")
+            
+        logger.info(f"已向全集群广播任务停止指令: {task_id}")
+    except Exception as e:
+        logger.error(f"广播停止指令失败: {e}")
+        raise HTTPException(status_code=500, detail="MQ 控制总线通信失败")
 
+    # 2. 更新数据库状态
     await db.tasks.update_one(
         {"_id": task_id},
-        {"$set": {
-            "status": "stopped",
-            "finished_at": datetime.now(timezone.utc),
-        }},
+        {"$set": {"status": "stopped", "finished_at": datetime.now(timezone.utc)}}
     )
 
-    return {"message": "任务已停止", "task_id": task_id}
+    return {"message": "停止指令已广播", "task_id": task_id}
 
+@router.get("/tasks/{task_id}/status")
+async def get_task_status(task_id: str):
+    db = get_db()
+    task = await db.tasks.find_one({"_id": task_id})
+    if not task: raise HTTPException(status_code=404, detail="任务不存在")
+    return task
 
 @router.get("/projects/{project_id}/tasks")
 async def list_tasks(project_id: str):
-    """获取项目的所有任务"""
     db = get_db()
-    tasks = []
     cursor = db.tasks.find({"project_id": project_id}).sort("started_at", -1).limit(20)
-    async for doc in cursor:
-        tasks.append(doc)
-    return tasks
+    return [doc async for doc in cursor]

@@ -12,6 +12,10 @@ load_dotenv()
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017/admin")
 DATABASE_NAME = os.getenv("DATABASE_NAME", "rulecrawl")
 
+# RabbitMQ 配置
+
+RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://admin:admin123@localhost/")
+
 # 服务器配置
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
