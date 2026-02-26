@@ -84,9 +84,11 @@
                                 <div class="form-group"><label>节点名称</label><input id="start-name" class="form-input">
                                 </div>
                                 <div class="form-row">
-                                    <div class="form-group"><label>起始 URL *</label><input id="start-url"
-                                            class="form-input"></div>
-                                    <div class="form-group"><label>方法</label><select id="start-method"
+                                    <div class="form-group" style="flex:1;"><label>起始 URL 列表 (支持通配符) *</label>
+                                        <div id="start-url-list" class="field-list"></div>
+                                        <button class="btn btn-ghost btn-sm" onclick="addStartUrlRow()">➕ 添加 URL</button>
+                                    </div>
+                                    <div class="form-group" style="width:120px;"><label>方法</label><select id="start-method"
                                             class="form-select">
                                             <option>GET</option>
                                             <option>POST</option>
@@ -168,8 +170,9 @@
                                         <option value="url">按 URL</option>
                                         <option value="field">按字段</option>
                                     </select>
-                                    <input id="detail-dedup-field" class="form-input" placeholder="字段名"
-                                        style="display:none;">
+                                    <select id="detail-dedup-field" class="form-select" style="display:none;">
+                                        <option value="">-- 请选择去重字段 --</option>
+                                    </select>
                                 </div>
                             </div>
                             <button class="btn btn-primary" onclick="saveNode('detail')">💾 保存配置</button>

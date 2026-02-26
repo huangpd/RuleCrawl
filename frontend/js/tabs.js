@@ -137,9 +137,14 @@ function loadNodeToForm(node) {
     const nameEl = document.getElementById(`${type}-name`);
     if (nameEl) nameEl.value = node.name || '';
 
-    // 请求配置
-    const urlEl = document.getElementById(`${type}-url`);
-    if (urlEl) urlEl.value = rc.url || '';
+    // 请求配置 (起始页 URL 列表特殊处理)
+    if (type === 'start') {
+        const urls = (rc.url || '').split('\n').filter(u => u.trim());
+        renderStartUrlList(urls);
+    } else {
+        const urlEl = document.getElementById(`${type}-url`);
+        if (urlEl) urlEl.value = rc.url || '';
+    }
 
     const methodEl = document.getElementById(`${type}-method`);
     if (methodEl) methodEl.value = rc.method || 'GET';
@@ -204,6 +209,9 @@ function loadNodeToForm(node) {
             dedupTypeEl.value = pr.deduplication_type || 'none';
             toggleDedupField();
         }
+        
+        // 刷新下拉列表后再设置值
+        refreshDedupFieldList();
         const dedupFieldEl = document.getElementById('detail-dedup-field');
         if (dedupFieldEl) {
             dedupFieldEl.value = pr.deduplication_field || '';
@@ -218,6 +226,24 @@ function loadNodeToForm(node) {
     // 标记当前编辑的节点 ID
     app.state.editingNodeId = node._id;
     app.state.editingNodeType = type;
+}
+
+/** 刷新详情页去重字段下拉列表 */
+function refreshDedupFieldList() {
+    const select = document.getElementById('detail-dedup-field');
+    if (!select) return;
+
+    const currentValue = select.value;
+    const fields = collectDetailFields();
+    
+    let html = '<option value="">-- 请选择去重字段 --</option>';
+    fields.forEach(f => {
+        html += `<option value="${f.name}">${f.name}</option>`;
+    });
+    
+    select.innerHTML = html;
+    // 尝试恢复之前选中的值
+    select.value = currentValue;
 }
 
 /** 更新回调下拉选项 */
@@ -245,13 +271,46 @@ function updateAllCallbacks() {
     });
 }
 
+/** 渲染起始页 URL 列表 */
+function renderStartUrlList(urls) {
+    const container = document.getElementById('start-url-list');
+    if (!container) return;
+    container.innerHTML = '';
+    if (!urls || urls.length === 0) {
+        addStartUrlRow();
+        return;
+    }
+    urls.forEach(url => addStartUrlRow(url));
+}
+
+/** 添加一个起始 URL 行 */
+function addStartUrlRow(url = '') {
+    const container = document.getElementById('start-url-list');
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'field-row url-row';
+    row.innerHTML = `
+        <input class="form-input" placeholder="https://..." style="flex:1" value="${url}">
+        <button class="field-remove-btn" onclick="this.parentElement.remove()">✕</button>
+    `;
+    container.appendChild(row);
+}
+
 /** 从表单收集节点数据 */
 function collectNodeData(type) {
+    let urlValue = '';
+    if (type === 'start') {
+        const inputs = document.querySelectorAll('#start-url-list .url-row input');
+        urlValue = Array.from(inputs).map(i => i.value.trim()).filter(v => v).join('\n');
+    } else {
+        urlValue = document.getElementById(`${type}-url`)?.value || '';
+    }
+
     const data = {
         node_type: type,
         name: document.getElementById(`${type}-name`)?.value || `${NODE_TYPE_LABELS[type]}`,
         request_config: {
-            url: document.getElementById(`${type}-url`)?.value || '',
+            url: urlValue,
             method: document.getElementById(`${type}-method`)?.value || 'GET',
             headers: parseJSONHeaders(document.getElementById(`${type}-headers`)?.value),
             body: document.getElementById(`${type}-body`)?.value || null,
@@ -346,6 +405,9 @@ function newNode(type) {
     if (type === 'list') {
         renderListFields([]);
     }
+    if (type === 'start') {
+        renderStartUrlList([]);
+    }
     showToast('已切换到新建模式', 'info');
 }
 
@@ -374,7 +436,7 @@ function addDetailField(fieldData = null) {
     const rulesCount = fieldData && fieldData.clean_rules ? fieldData.clean_rules.length : 0;
 
     row.innerHTML = `
-        <input class="form-input field-name" placeholder="字段名" style="width:100px">
+        <input class="form-input field-name" placeholder="字段名" style="width:100px" oninput="refreshDedupFieldList()">
         <select class="form-select field-type" style="width:80px">
             <option value="xpath">XPath</option>
             <option value="css">CSS</option>
@@ -386,7 +448,7 @@ function addDetailField(fieldData = null) {
         <button class="btn btn-ghost btn-xs field-clean-btn ${rulesCount > 0 ? 'active' : ''}" onclick="openCleanRulesModal(this)">
             ${rulesCount > 0 ? `✨ 清洗(${rulesCount})` : '✨ 清洗'}
         </button>
-        <button class="field-remove-btn" onclick="this.parentElement.remove()">✕</button>
+        <button class="field-remove-btn" onclick="this.parentElement.remove(); refreshDedupFieldList();">✕</button>
     `;
 
     if (fieldData) {
@@ -396,6 +458,7 @@ function addDetailField(fieldData = null) {
     }
 
     container.appendChild(row);
+    refreshDedupFieldList();
 }
 
 /** 收集详情页字段 */
@@ -578,9 +641,10 @@ async function unlinkNode(nodeType) {
 /** 切换去重字段输入框显示状态 */
 function toggleDedupField() {
     const type = document.getElementById('detail-dedup-type')?.value;
-    const group = document.getElementById('detail-dedup-field-group');
-    if (group) {
-        group.style.display = (type === 'field') ? 'block' : 'none';
+    const fieldSelect = document.getElementById('detail-dedup-field');
+    if (fieldSelect) {
+        fieldSelect.style.display = (type === 'field') ? 'inline-block' : 'none';
+        if (type === 'field') refreshDedupFieldList();
     }
 }
 

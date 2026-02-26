@@ -690,6 +690,10 @@ body {
     font-size: 12px;
 }
 
+.field-row.url-row {
+    grid-template-columns: 1fr 40px;
+}
+
 .field-remove-btn {
     width: 32px;
     height: 32px;

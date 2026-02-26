@@ -14,21 +14,17 @@ from app.database import get_db
 from app.engine.context import CrawlContext
 from app.engine.nodes.base import BaseNode, NodeResult
 from app.engine.nodes.start import StartNode
-from app.engine.nodes.intermediate import IntermediateNode
 from app.engine.nodes.list_page import ListPageNode
-from app.engine.nodes.next_page import NextPageNode
 from app.engine.nodes.detail import DetailNode
 from app.utils.http_client import fetch
 from app.config import MAX_CONCURRENT_REQUESTS
 
 logger = logging.getLogger(__name__)
 
-# 节点类型 → 节点类的映射
+# 节点类型 → 节点类的映射 (已精简，移除独立翻页和中间页节点)
 NODE_CLASS_MAP = {
     "start": StartNode,
-    "intermediate": IntermediateNode,
     "list": ListPageNode,
-    "next": NextPageNode,
     "detail": DetailNode,
 }
 
@@ -41,7 +37,7 @@ class FlowManager:
     1. 从数据库加载项目的所有节点配置
     2. 构建节点执行图
     3. 从 StartNode 开始，按 callback 链调度执行
-    4. 处理列表页"分裂"和下一页"循环"
+    4. 处理列表页"分裂"和集成翻页循环
     """
 
     def __init__(self, project_id: str, task_id: str):
@@ -79,12 +75,6 @@ class FlowManager:
     async def execute(self):
         """
         执行完整的爬虫工作流
-
-        流程：
-        1. 找到 StartNode 并执行
-        2. 根据 callback_node_id 链式调度后续节点
-        3. 列表页产生的多个 URL 并行分发到回调节点
-        4. 下一页节点产生的 URL 循环回目标节点
         """
         db = get_db()
 
@@ -165,7 +155,6 @@ class FlowManager:
         db = get_db()
 
         if not result.success:
-            # 记录业务逻辑错误（如 404，解析不到内容）
             await db.tasks.update_one(
                 {"_id": self.task_id},
                 {"$inc": {"stats.errors": 1}},
@@ -191,16 +180,29 @@ class FlowManager:
             return
 
         if node_config["node_type"] == "list":
-            # 列表页：分裂出多个子任务（使用循环翻页，避免递归栈溢出）
+            # 列表页：分裂出多个子任务 + 集成翻页循环
             await self._handle_list_result(result, updated_context, node_config)
             return
 
-        if node_config["node_type"] == "next":
-            # 下一页：循环回调
-            await self._handle_next_result(result, updated_context)
+        # ── 核心逻辑：支持 Start 节点的任务分裂 (如通配符 URL) ──
+        if node_config["node_type"] == "start" and result.urls and result.callback_node_id:
+            logger.info("起始页产生了多条 URL (%d 条)，正在并行分发...", len(result.urls))
+            from app.config import MAX_CONCURRENT_REQUESTS
+            semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+
+            async def dispatch(url: str):
+                async with semaphore:
+                    if self._stop_flag:
+                        return
+                    # 复制当前上下文（保留 Headers/Cookies 等），清除 HTML
+                    child_context = updated_context.clone(url=url, html="")
+                    await self._execute_node(result.callback_node_id, child_context)
+
+            tasks = [dispatch(url) for url in result.urls]
+            await asyncio.gather(*tasks, return_exceptions=True)
             return
 
-        # 其他节点（start / intermediate）：直接流转到回调节点
+        # 其他节点（如 Start 只有单条 URL）：直接流转到回调节点
         if result.callback_node_id:
             await self._execute_node(result.callback_node_id, updated_context)
 
@@ -211,14 +213,14 @@ class FlowManager:
         处理列表页结果：并行处理子链接 + 迭代翻页
         """
         current_result = result
-        current_context = context  # 这里的 context 现在是 updated_context，包含了 HTML
+        current_context = context
         db = get_db()
 
         while True:
             if self._stop_flag:
                 return
 
-            # 1. 并行处理当前页的子链接 / 数据项 (使用 child_context，不影响主循环 context)
+            # 1. 并行处理当前页的子链接 / 数据项
             if (current_result.urls or current_result.items) and current_result.callback_node_id:
                 semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
@@ -226,12 +228,10 @@ class FlowManager:
                     async with semaphore:
                         if self._stop_flag:
                             return
-                        # 合并父级已有的数据和当前节点提取的新数据，确保多级透传不丢失
                         new_parent_data = current_context.parent_data.copy()
                         extra_fields = current_result.url_data.get(url, {})
                         if extra_fields:
                             new_parent_data.update(extra_fields)
-                            logger.info("FlowManager 传递透传数据: URL=%s, Data=%s", url, extra_fields)
 
                         child_context = current_context.clone(
                             url=url, html="", parent_data=new_parent_data
@@ -242,15 +242,14 @@ class FlowManager:
                     async with semaphore:
                         if self._stop_flag:
                             return
-                        # 生成虚拟 URL 和 JSON 内容
                         virtual_url = f"data://{uuid.uuid4()}"
                         content = json.dumps(item, ensure_ascii=False)
 
                         child_context = current_context.clone(
                             url=virtual_url,
-                            html=content,  # 将 JSON 数据作为页面内容
+                            html=content,
                             content_type="json",
-                            source_url=current_context.url  # 记录来源
+                            source_url=current_context.url
                         )
                         await self._execute_node(current_result.callback_node_id, child_context)
 
@@ -262,30 +261,17 @@ class FlowManager:
 
                 await asyncio.gather(*tasks, return_exceptions=True)
 
-            # 2. 确定下一页 URL
-            next_url = current_result.next_url  # 优先使用集成在列表页中的翻页链接
-            next_node_config = None
-
+            # 2. 确定下一页 URL (仅支持集成翻页模式)
+            next_url = current_result.next_url
             if not next_url:
-                # 兼容模式：查找是否有独立的 NextPage 节点
-                next_node_config = self._find_next_node_for_list(list_node_config)
-                if next_node_config:
-                    next_node = self.create_node_instance(next_node_config)
-                    next_result = await next_node.execute(current_context)
-                    if next_result.success:
-                        next_url = next_result.next_url
-
-            if not next_url:
-                break  # 无翻页 URL，结束循环
+                break 
 
             # 3. 获取下一页内容
             try:
-                headers = current_context.headers
-                cookies = current_context.cookies
                 response = await fetch(
                     url=next_url,
-                    headers=headers,
-                    cookies=cookies,
+                    headers=current_context.headers,
+                    cookies=current_context.cookies,
                 )
                 next_context = current_context.clone(
                     url=next_url,
@@ -293,18 +279,11 @@ class FlowManager:
                     page_number=current_context.page_number + 1,
                 )
             except Exception as e:
-                logger.warning("翻页请求失败: %s", e)
+                logger.warning("翻页请求失败: URL=%s, Error=%s", next_url, e)
                 break 
 
-            # 4. 在新页面上重新执行列表页
-            # 如果是集成模式，继续用当前列表页；如果是独立模式，用 NextNode 的回调
-            callback_id = (next_node_config.get("callback_node_id") if next_node_config 
-                           else list_node_config["_id"])
-            callback_config = self.nodes.get(callback_id)
-            if not callback_config:
-                break
-
-            list_node_instance = self.create_node_instance(callback_config)
+            # 4. 在新页面上重新执行列表页 (保持同一节点实例逻辑)
+            list_node_instance = self.create_node_instance(list_node_config)
             new_list_result = await list_node_instance.execute(next_context)
 
             if not new_list_result.success:
@@ -312,66 +291,19 @@ class FlowManager:
                     {"_id": self.task_id},
                     {"$inc": {"stats.errors": 1}},
                 )
-                logger.warning("翻页后列表页执行失败: %s", new_list_result.error)
                 break
 
-            # 更新请求计数
             await db.tasks.update_one(
                 {"_id": self.task_id},
                 {"$inc": {"stats.total_requests": 1}},
             )
 
-            # 5. 以新结果进入下一轮循环
+            # 5. 进入下一轮循环
             current_result = new_list_result
             current_context = new_list_result.context or next_context
 
-    def _find_next_node_for_list(self, list_node_config: dict) -> Optional[dict]:
-        """查找与列表页关联的下一页节点"""
-        for node in self.nodes.values():
-            if node["node_type"] == "next":
-                # 下一页节点的回调指向当前列表页，或者就在同一个项目中
-                if node.get("callback_node_id") == list_node_config["_id"]:
-                    return node
-        # 如果没有明确的回调指向，查找项目中的下一页节点
-        # ⚠️ 逻辑修正：严格模式下不应随意匹配 NextNode，必须由 NextNode 显式指向 ListPage (callback_node_id)
-        # 或者 ListPage 显式配置 next_page_node_id (当前配置结构不支持)
-        # 原有的"随便找一个 NextNode"的逻辑在多列表页场景下会导致严重错误
-        # 因此移除兜底逻辑，强制要求 NextNode.callback_node_id == ListPage._id
-
-        # for node in self.nodes.values():
-        #     if node["node_type"] == "next":
-        #         return node
-        return None
-
-    async def _handle_next_result(self, result: NodeResult, context: CrawlContext):
-        """处理下一页结果：循环回调"""
-        if self._stop_flag:
-            return
-
-        if result.next_url and result.callback_node_id:
-            try:
-                headers = context.headers
-                cookies = context.cookies
-                response = await fetch(
-                    url=result.next_url,
-                    headers=headers,
-                    cookies=cookies,
-                )
-                next_context = context.clone(
-                    url=result.next_url,
-                    html=response.text,
-                )
-                await self._execute_node(result.callback_node_id, next_context)
-            except Exception as e:
-                logger.warning("下一页请求失败: %s", e)
-
     async def validate(self) -> list[str]:
-        """
-        验证工作流合法性
-
-        Returns:
-            错误信息列表，空列表表示合法
-        """
+        """验证工作流合法性"""
         errors = []
         await self.load_nodes()
 
@@ -379,24 +311,19 @@ class FlowManager:
             errors.append("项目没有配置任何节点")
             return errors
 
-        # 检查起始节点
         start_node = self.get_start_node()
         if not start_node:
             errors.append("缺少起始页节点")
 
-        # 检查悬空的 callback 引用
         for node in self.nodes.values():
             cb_id = node.get("callback_node_id")
             if cb_id and cb_id not in self.nodes:
-                errors.append(
-                    f"节点 [{node['name']}] 的回调目标 {cb_id} 不存在"
-                )
-
-        # 检查详情页节点是否有 callback（不应该有）
-        for node in self.nodes.values():
-            if node["node_type"] == "detail" and node.get("callback_node_id"):
-                errors.append(
-                    f"详情页节点 [{node['name']}] 不应配置回调目标"
-                )
+                errors.append(f"节点 [{node['name']}] 的回调目标 {cb_id} 不存在")
+            
+            # 针对详情页的额外检查
+            if node["node_type"] == "detail":
+                rules = node.get("parse_rules", {})
+                if rules.get("deduplication_type") == "field" and not rules.get("deduplication_field"):
+                    errors.append(f"详情页节点 [{node['name']}] 开启了字段去重，但未指定具体字段名")
 
         return errors
