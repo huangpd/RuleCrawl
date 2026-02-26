@@ -31,7 +31,8 @@ dependencies = [
     "parsel==1.9.0",
     "jsonpath-ng==1.6.1",
     "python-dotenv==1.0.1",
-    "tenacity>=9.0.0"
+    "tenacity>=9.0.0",
+    "aio_pika>=9.6.1"
 ]
 
 [project.urls]
