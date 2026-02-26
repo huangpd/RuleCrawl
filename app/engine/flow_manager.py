@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from app.database import get_db
+from app.models.node import NodeCreate
 from app.engine.context import CrawlContext
 from app.engine.nodes.base import BaseNode, NodeResult
 from app.engine.nodes.start import StartNode
@@ -61,12 +62,15 @@ class FlowManager:
         return None
 
     def create_node_instance(self, node_config: dict) -> BaseNode:
-        """根据配置创建节点实例"""
-        node_type = node_config["node_type"]
+        """根据配置创建节点实例 (使用 Pydantic 验证后的配置)"""
+        # 利用 Pydantic 进行类型强制转换和验证 (核心改动)
+        validated_config = NodeCreate(**node_config).model_dump()
+        
+        node_type = validated_config["node_type"]
         cls = NODE_CLASS_MAP.get(node_type)
         if not cls:
             raise ValueError(f"未知的节点类型: {node_type}")
-        return cls(node_config)
+        return cls(validated_config)
 
     def stop(self):
         """停止执行"""
@@ -186,7 +190,7 @@ class FlowManager:
 
         # ── 核心逻辑：支持 Start 节点的任务分裂 (如通配符 URL) ──
         if node_config["node_type"] == "start" and result.urls and result.callback_node_id:
-            logger.info("起始页产生了多条 URL (%d 条)，正在并行分发...", len(result.urls))
+            logger.info("起始页产生了多条 URL (%d 条)，正在分批分发...", len(result.urls))
             from app.config import MAX_CONCURRENT_REQUESTS
             semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
@@ -198,8 +202,11 @@ class FlowManager:
                     child_context = updated_context.clone(url=url, html="")
                     await self._execute_node(result.callback_node_id, child_context)
 
-            tasks = [dispatch(url) for url in result.urls]
-            await asyncio.gather(*tasks, return_exceptions=True)
+            # 同样采用分块处理模式，防止起始任务过多打爆内存
+            chunk_size = 100
+            for i in range(0, len(result.urls), chunk_size):
+                chunk = result.urls[i:i + chunk_size]
+                await asyncio.gather(*[dispatch(url) for url in chunk], return_exceptions=True)
             return
 
         # 其他节点（如 Start 只有单条 URL）：直接流转到回调节点
@@ -220,46 +227,39 @@ class FlowManager:
             if self._stop_flag:
                 return
 
-            # 1. 并行处理当前页的子链接 / 数据项
+            # 1. 分批处理当前页的子链接 / 数据项 (防内存打爆)
             if (current_result.urls or current_result.items) and current_result.callback_node_id:
+                all_targets = []
+                if current_result.urls:
+                    all_targets.extend([('url', u) for u in current_result.urls])
+                if current_result.items:
+                    all_targets.extend([('item', i) for i in current_result.items])
+
                 semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
-                async def process_url(url: str):
+                async def safe_execute(target_type, target_val):
                     async with semaphore:
                         if self._stop_flag:
                             return
-                        new_parent_data = current_context.parent_data.copy()
-                        extra_fields = current_result.url_data.get(url, {})
-                        if extra_fields:
-                            new_parent_data.update(extra_fields)
-
-                        child_context = current_context.clone(
-                            url=url, html="", parent_data=new_parent_data
-                        )
+                        
+                        if target_type == 'url':
+                            new_parent_data = current_context.parent_data.copy()
+                            extra_fields = current_result.url_data.get(target_val, {})
+                            if extra_fields:
+                                new_parent_data.update(extra_fields)
+                            child_context = current_context.clone(url=target_val, html="", parent_data=new_parent_data)
+                        else:
+                            virtual_url = f"data://{uuid.uuid4()}"
+                            content = json.dumps(target_val, ensure_ascii=False)
+                            child_context = current_context.clone(url=virtual_url, html=content, content_type="json", source_url=current_context.url)
+                        
                         await self._execute_node(current_result.callback_node_id, child_context)
 
-                async def process_item(item: dict):
-                    async with semaphore:
-                        if self._stop_flag:
-                            return
-                        virtual_url = f"data://{uuid.uuid4()}"
-                        content = json.dumps(item, ensure_ascii=False)
-
-                        child_context = current_context.clone(
-                            url=virtual_url,
-                            html=content,
-                            content_type="json",
-                            source_url=current_context.url
-                        )
-                        await self._execute_node(current_result.callback_node_id, child_context)
-
-                tasks = []
-                if current_result.urls:
-                    tasks.extend([process_url(url) for url in current_result.urls])
-                if current_result.items:
-                    tasks.extend([process_item(item) for item in current_result.items])
-
-                await asyncio.gather(*tasks, return_exceptions=True)
+                # 使用 chunk 分块处理，每块 100 个任务，防止 gather 产生巨量 Task 对象
+                chunk_size = 100
+                for i in range(0, len(all_targets), chunk_size):
+                    chunk = all_targets[i:i + chunk_size]
+                    await asyncio.gather(*[safe_execute(t, v) for t, v in chunk], return_exceptions=True)
 
             # 2. 确定下一页 URL (仅支持集成翻页模式)
             next_url = current_result.next_url

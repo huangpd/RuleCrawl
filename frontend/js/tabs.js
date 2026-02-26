@@ -139,7 +139,12 @@ function loadNodeToForm(node) {
 
     // 请求配置 (起始页 URL 列表特殊处理)
     if (type === 'start') {
-        const urls = (rc.url || '').split('\n').filter(u => u.trim());
+        let urls = [];
+        if (Array.isArray(rc.url)) {
+            urls = rc.url;
+        } else {
+            urls = (rc.url || '').split('\n').filter(u => u.trim());
+        }
         renderStartUrlList(urls);
     } else {
         const urlEl = document.getElementById(`${type}-url`);
@@ -298,12 +303,13 @@ function addStartUrlRow(url = '') {
 
 /** 从表单收集节点数据 */
 function collectNodeData(type) {
-    let urlValue = '';
+    let urlValue = [];
     if (type === 'start') {
         const inputs = document.querySelectorAll('#start-url-list .url-row input');
-        urlValue = Array.from(inputs).map(i => i.value.trim()).filter(v => v).join('\n');
+        urlValue = Array.from(inputs).map(i => i.value.trim()).filter(v => v);
     } else {
-        urlValue = document.getElementById(`${type}-url`)?.value || '';
+        const val = document.getElementById(`${type}-url`)?.value?.trim();
+        urlValue = val ? [val] : []; // 统一为数组格式
     }
 
     const data = {

@@ -3,7 +3,7 @@
 5 种节点类型：start / intermediate / list / next / detail
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Literal
 from datetime import datetime
 
@@ -25,19 +25,25 @@ class FieldRule(BaseModel):
     selector_type: Literal["xpath", "css", "jsonpath", "regex", "text"] = Field(
         "xpath", description="选择器类型"
     )
-    is_link: bool = Field(False, description="是否为链接（用于列表页提取）")
-    attr: Optional[str] = Field(None, description="提取属性（如 href, src）")
     clean_rules: list[CleanRule] = Field(default_factory=list, description="清洗规则列表")
 
 
 class RequestConfig(BaseModel):
     """HTTP 请求配置"""
-    url: Optional[str] = Field("", description="请求 URL（起始页必填）")
+    url: list[str] = Field(default_factory=list, description="请求 URL 列表")
     method: Literal["GET", "POST"] = Field("GET", description="请求方法")
     headers: Optional[dict] = Field(default_factory=dict, description="自定义请求头")
     cookies: Optional[dict] = Field(default_factory=dict, description="自定义 Cookies")
     body: Optional[str] = Field(None, description="POST 请求体")
     content_type: Optional[str] = Field(None, description="Content-Type")
+
+    @field_validator("url", mode="before")
+    @classmethod
+    def ensure_list(cls, v):
+        if isinstance(v, list): return v
+        if isinstance(v, str) and v.strip():
+            return [line.strip() for line in v.split("\n") if line.strip()]
+        return []
 
 
 class ParseRules(BaseModel):

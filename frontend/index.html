@@ -94,9 +94,9 @@
                                             <option>POST</option>
                                         </select></div>
                                 </div>
-                                <div class="form-group"><label>Headers (JSON)</label><textarea id="start-headers"
+                                <div class="form-group"><label>Headers</label><textarea id="start-headers"
                                         class="form-textarea"></textarea></div>
-                                <div class="form-group"><label>POST Body (JSON/String)</label><textarea id="start-body"
+                                <div class="form-group"><label>Body</label><textarea id="start-body"
                                         class="form-textarea"></textarea></div>
                                 <div id="start-next-step" class="next-step-section"></div>
                             </div>
@@ -147,7 +147,7 @@
                                             <option value="xpath">XPath</option>
                                             <option value="css">CSS</option>
                                         </select>
-                                        <input id="list-pg-max" class="form-input" type="number" value="10">
+                                        <input id="list-pg-max" class="form-input" type="number" value="1">
                                     </div>
                                 </div>
                                 <div id="list-next-step" class="next-step-section"></div>
@@ -182,9 +182,23 @@
                         <div id="tab-data" class="tab-pane">
                             <div class="glass-card">
                                 <div class="card-title">📊 采集数据预览</div>
-                                <div style="display:flex;gap:12px;margin-bottom:16px;">
+                                <div
+                                    style="display:flex; gap:12px; margin-bottom:16px; align-items:center; flex-wrap:wrap;">
                                     <button class="btn btn-primary btn-sm" onclick="loadData(1)">🔄 刷新</button>
                                     <button class="btn btn-danger btn-sm" onclick="clearData()">🗑️ 清空</button>
+
+                                    <div style="flex:1;"></div>
+
+                                    <!-- 数据检索区 -->
+                                    <div style="display:flex; gap:8px; align-items:center; background:rgba(0,0,0,0.2); padding:4px 8px; border-radius:var(--radius-sm); border:1px solid var(--glass-border);">
+                                        <select id="dataSearchField" class="form-select" style="width:120px; padding:4px 8px; height:32px;">
+                                            <option value="">-- 选择字段 --</option>
+                                        </select>
+                                        <input id="dataSearchKeyword" class="form-input" placeholder="输入关键词搜索..." 
+                                            style="width:180px; padding:4px 8px; height:32px;"
+                                            onkeyup="if(event.key==='Enter') loadData(1)">
+                                        <button class="btn btn-primary btn-sm" style="padding:4px 12px; height:32px;" onclick="loadData(1)">🔍 搜索</button>
+                                    </div>
                                 </div>
                                 <div id="dataTableContainer"></div>
                             </div>
@@ -194,25 +208,6 @@
             </div>
         </div>
 
-        <!-- 首页数据查看模态框 (修复 ID 缺失问题) -->
-        <div id="dataViewModal" class="modal-overlay" style="display:none;">
-            <div class="modal-content glass-card"
-                style="width:950px; height:85vh; display:flex; flex-direction:column;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-                    <h3 id="dataModalTitle">项目数据</h3>
-                    <button class="btn btn-ghost btn-sm" onclick="closeDataViewModal()">✕</button>
-                </div>
-                <div
-                    style="margin-bottom:12px; font-size:13px; color:var(--text-dim); display:flex; justify-content:space-between;">
-                    <span>共 <span id="dataModalTotal" style="color:var(--text-primary); font-weight:bold;">0</span>
-                        条数据</span>
-                    <button class="btn btn-primary btn-xs" onclick="loadModalData(1)">🔄 刷新</button>
-                </div>
-                <div id="modalDataTableContainer"
-                    style="flex:1; overflow-y:auto; border:1px solid var(--glass-border); border-radius:6px;"></div>
-                <div id="modalDataPagination" class="pagination" style="margin-top:16px; justify-content:flex-end;">
-                </div>
-            </div>
         </div>
 
         <!-- 其他模态框 (保持不变) -->

@@ -15,8 +15,9 @@ from tenacity import (
     before_sleep_log,
 )
 from app.config import DEFAULT_USER_AGENT, REQUEST_TIMEOUT
+from app.utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("http_client")
 
 # 全局共享的 AsyncClient 实例（通过 lifespan 管理生命周期）
 _client: httpx.AsyncClient | None = None

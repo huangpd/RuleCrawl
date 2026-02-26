@@ -102,15 +102,22 @@ const api = {
     },
 
     // ============ 数据 ============
-    async listData(projectId, page = 1, pageSize = 20) {
-        const res = await fetch(
-            `${API_BASE}/projects/${projectId}/data?page=${page}&page_size=${pageSize}`
-        );
+    async listData(projectId, page = 1, pageSize = 20, searchField = '', keyword = '') {
+        let url = `${API_BASE}/projects/${projectId}/data?page=${page}&page_size=${pageSize}`;
+        if (searchField && keyword) {
+            url += `&search_field=${encodeURIComponent(searchField)}&keyword=${encodeURIComponent(keyword)}`;
+        }
+        const res = await fetch(url);
         return res.json();
     },
 
     async clearData(projectId) {
         const res = await fetch(`${API_BASE}/projects/${projectId}/data`, { method: 'DELETE' });
+        return res.json();
+    },
+
+    async deleteData(dataId) {
+        const res = await fetch(`${API_BASE}/data/${dataId}`, { method: 'DELETE' });
         return res.json();
     },
 };

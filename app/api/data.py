@@ -13,6 +13,8 @@ async def list_data(
     project_id: str,
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页条数"),
+    search_field: str = Query(None, description="搜索字段名"),
+    keyword: str = Query(None, description="搜索关键词"),
 ):
     """分页查询采集数据"""
     db = get_db()
@@ -22,14 +24,20 @@ async def list_data(
     if not project:
         raise HTTPException(status_code=404, detail="项目不存在")
 
-    # 总数
-    total = await db.data_store.count_documents({"project_id": project_id})
+    # 构建查询条件
+    query = {"project_id": project_id}
+    if search_field and keyword:
+        # 支持在 data.xxx 字段下进行不区分大小写的正则模糊搜索
+        query[f"data.{search_field}"] = {"$regex": keyword, "$options": "i"}
+
+    # 总数 (带过滤)
+    total = await db.data_store.count_documents(query)
 
     # 分页查询
     skip = (page - 1) * page_size
     cursor = (
         db.data_store
-        .find({"project_id": project_id})
+        .find(query)
         .sort("crawl_time", -1)
         .skip(skip)
         .limit(page_size)
@@ -37,11 +45,10 @@ async def list_data(
 
     items = []
     async for doc in cursor:
-        # 转换 ObjectId 为字符串，防止 json 序列化报错
-        # 仅返回必要字段，避免暴露内部 ID
         item = {
+            "id": str(doc["_id"]),  # 返回内部 ID 用于后续删除操作
             "source_url": doc.get("source_url"),
-            "crawl_time": doc.get("crawl_time") or doc.get("crawled_at"),  # 兼容旧数据
+            "crawl_time": doc.get("crawl_time") or doc.get("crawled_at"),
             "data": doc.get("data"),
         }
         items.append(item)
@@ -52,6 +59,20 @@ async def list_data(
         "page_size": page_size,
         "items": items,
     }
+
+
+@router.delete("/data/{data_id}")
+async def delete_single_data(data_id: str):
+    """删除单条采集数据"""
+    from bson import ObjectId
+    db = get_db()
+    try:
+        result = await db.data_store.delete_one({"_id": ObjectId(data_id)})
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="数据不存在")
+        return {"message": "删除成功"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"无效的 ID 格式: {str(e)}")
 
 
 @router.delete("/projects/{project_id}/data")

@@ -1,15 +1,13 @@
-import uuid
-import logging
 from datetime import datetime, timezone
-from typing import Optional
 
+from app.utils.logger import get_logger
 from app.engine.nodes.base import BaseNode, NodeResult
 from app.engine.context import CrawlContext
 from app.engine.parser import UniversalParser
 from app.utils.http_client import fetch
 from app.database import get_db
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class DetailNode(BaseNode):

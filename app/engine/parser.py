@@ -5,13 +5,12 @@
 
 import re
 import json
-import logging
 from typing import Any, Union
-from lxml import etree
 from parsel import Selector
 from jsonpath_ng import parse as jsonpath_parse
+from app.utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class UniversalParser:

@@ -2,14 +2,14 @@
 任务运行 API
 """
 
-import logging
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from app.database import get_db
 from app.engine.flow_manager import FlowManager
+from app.utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["任务管理"])
 

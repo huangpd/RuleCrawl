@@ -3,10 +3,10 @@ RuleCrawl 数据库连接管理
 使用 Motor 异步驱动连接 MongoDB
 """
 
-import logging
 from motor.motor_asyncio import AsyncIOMotorClient
+from app.utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 from app.config import MONGODB_URI, DATABASE_NAME
 
 # 全局客户端实例
