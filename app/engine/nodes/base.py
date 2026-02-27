@@ -10,29 +10,33 @@ from app.engine.context import CrawlContext
 from app.core.downloader import DownloaderFactory, BaseDownloader
 
 
+class NodeRegistry:
+    """节点类型注册表 (单例)"""
+    _registry = {}
+
+    @classmethod
+    def register(cls, node_type: str):
+        def decorator(node_cls):
+            cls._registry[node_type] = node_cls
+            return node_cls
+        return decorator
+
+    @classmethod
+    def get_node_class(cls, node_type: str):
+        return cls._registry.get(node_type)
+
+
 @dataclass
 class NodeResult:
     """
-    节点执行结果
-
-    Attributes:
-        success: 是否成功
-        urls: 提取出的链接列表（ListPage 用）
-        data: 提取出的结构化数据（DetailPage 用）
-        next_url: 下一页 URL（NextPage 用）
-        callback_node_id: 下一步流转到的节点 ID
-        context: 更新后的上下文
-        error: 错误信息
+    节点执行结果 (Orchestrator 通讯契约)
     """
     success: bool = True
-    urls: list[str] = field(default_factory=list)
-    items: list[dict] = field(default_factory=list)
+    # 核心：由节点预先拼装好的后续任务，编排器直接入队即可
+    follow_up_tasks: list[tuple[str, CrawlContext]] = field(default_factory=list)
     data: dict = field(default_factory=dict)
-    url_data: dict[str, dict] = field(default_factory=dict)  # URL → 列表页提取的附加字段
-    next_url: Optional[str] = None
-    callback_node_id: Optional[str] = None
-    context: Optional[CrawlContext] = None
     error: Optional[str] = None
+    context: Optional[CrawlContext] = None
 
 
 class BaseNode(ABC):
