@@ -3,7 +3,7 @@ import logging
 import uuid
 
 from app.utils.logger import get_logger
-from app.engine.nodes.base import BaseNode, NodeResult
+from app.engine.nodes.base import BaseNode, NodeResult, NodeRegistry
 from app.engine.context import CrawlContext
 from app.engine.parser import UniversalParser
 from app.database import get_db
@@ -11,6 +11,7 @@ from app.database import get_db
 logger = get_logger(__name__)
 
 
+@NodeRegistry.register("detail")
 class DetailNode(BaseNode):
     async def execute(self, context: CrawlContext) -> NodeResult:
         logger.info(f"Executing DetailNode for {context.url}")
