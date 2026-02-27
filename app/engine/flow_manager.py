@@ -31,7 +31,7 @@ class FlowManager:
         self._stop_flag = False
         self._rmq_conn: Optional[aio_pika.RobustConnection] = None
         self._rmq_channel: Optional[aio_pika.Channel] = None
-        self._task_queue_name = f"task_{task_id}"
+        self._task_queue_name = f"project_{project_id}"
         self._control_exchange_name = "rulecrawl_controls"
 
     async def _setup_mq(self):
@@ -102,22 +102,32 @@ class FlowManager:
             workers = [asyncio.create_task(self._worker()) for _ in range(MAX_CONCURRENT_REQUESTS)]
             
             # 3. 监控循环
+            is_natural_finish = False
             while not self._stop_flag:
                 await asyncio.sleep(5)
-                current_count = await self._get_queue_message_count()
-                if current_count == 0:
-                    # 队列清空后双重确认，防止翻页任务正在产生的间隙
+                if (await self._get_queue_message_count()) == 0:
+                    # 队列清空后双重确认
                     await asyncio.sleep(5)
-                    if (await self._get_queue_message_count()) == 0: break
+                    if (await self._get_queue_message_count()) == 0:
+                        is_natural_finish = True
+                        break
 
-            self.stop()
+            # 只有在非自然完成的情况下才调用 stop() (即手动触发或异常)
+            if not is_natural_finish:
+                self.stop()
+            
             for w in workers: w.cancel()
             
-            status = "stopped" if self._stop_flag else "completed"
-            await db.tasks.update_one({"_id": self.task_id}, {"$set": {"status": status, "finished_at": datetime.now(timezone.utc)}})
+            # 状态判定：如果是因为队列空了而退出，则是 completed
+            final_status = "completed" if is_natural_finish else "stopped"
+            await db.tasks.update_one({"_id": self.task_id}, {"$set": {"status": final_status, "finished_at": datetime.now(timezone.utc)}})
             
-            if status == "completed":
+            # 只有当采集任务【自然完成】时，才清理 MQ 队列
+            if is_natural_finish:
                 await self._rmq_channel.queue_delete(self._task_queue_name)
+                logger.info(f"项目采集任务全部完成，清理队列: {self.project_id}")
+            else:
+                logger.info(f"任务已接收停止信号或异常中断，保留队列以支持断点续爬: {self.project_id}")
 
         except Exception as e:
             logger.error(f"引擎崩溃: {e}", exc_info=True)

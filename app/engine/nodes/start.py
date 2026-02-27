@@ -4,12 +4,11 @@
 """
 
 import re
-from app.utils.logger import get_logger
+import logging
 from app.engine.nodes.base import BaseNode, NodeResult
 from app.engine.context import CrawlContext
-from app.utils.http_client import fetch
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 class StartNode(BaseNode):
     async def execute(self, context: CrawlContext) -> NodeResult:
@@ -39,7 +38,8 @@ class StartNode(BaseNode):
         # 3. 单请求抓取
         target_url = all_urls[0]
         try:
-            response = await fetch(
+            downloader = await self.get_downloader()
+            resp = await downloader.fetch(
                 url=target_url,
                 method=self.request_config.get("method", "GET"),
                 headers=self.merge_headers(context.headers),
@@ -47,11 +47,10 @@ class StartNode(BaseNode):
                 body=self.request_config.get("body"),
                 content_type=self.request_config.get("content_type"),
             )
-            ct = "json" if "json" in response.headers.get("content-type", "") else "html"
             return NodeResult(
                 success=True,
                 callback_node_id=self.callback_node_id,
-                context=context.clone(url=target_url, html=response.text, response_headers=dict(response.headers), content_type=ct)
+                context=context.clone(url=target_url, html=resp.text, response_headers=resp.headers, content_type=resp.content_type)
             )
         except Exception as e:
             logger.error(f"StartNode 失败: {target_url}, {e}")

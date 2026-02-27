@@ -77,10 +77,13 @@ class PaginationConfig(BaseModel):
 
 class NodeCreate(BaseModel):
     """创建节点的请求体"""
+    id: Optional[str] = Field(None, alias="_id", description="节点 ID")
     node_type: Literal["start", "intermediate", "list", "next", "detail"] = Field(
         ..., description="节点类型"
     )
     name: str = Field(..., min_length=1, max_length=200, description="节点名称")
+    
+    model_config = {"populate_by_name": True}
     request_config: RequestConfig = Field(
         default_factory=RequestConfig, description="HTTP 请求配置"
     )

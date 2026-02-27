@@ -5,13 +5,12 @@
 """
 
 from urllib.parse import urljoin
-from app.utils.logger import get_logger
+import logging
 from app.engine.nodes.base import BaseNode, NodeResult
 from app.engine.context import CrawlContext
 from app.engine.parser import UniversalParser
-from app.utils.http_client import fetch
-from app.utils.logger import get_logger
-logger = get_logger(__name__)
+
+logger = logging.getLogger(__name__)
 
 class ListPageNode(BaseNode):
     async def execute(self, context: CrawlContext) -> NodeResult:
@@ -20,8 +19,14 @@ class ListPageNode(BaseNode):
         # 1. 抓取逻辑补全
         if not html and context.url:
             try:
-                resp = await fetch(context.url, method="GET", headers=self.merge_headers(context.headers), cookies=self.merge_cookies(context.cookies))
-                html, content_type = resp.text, ("json" if "json" in resp.headers.get("content-type", "") else "html")
+                downloader = await self.get_downloader()
+                resp = await downloader.fetch(
+                    context.url, 
+                    method="GET", 
+                    headers=self.merge_headers(context.headers), 
+                    cookies=self.merge_cookies(context.cookies)
+                )
+                html, content_type = resp.text, resp.content_type
                 context = context.clone(html=html, content_type=content_type)
             except Exception as e:
                 return NodeResult(success=False, error=f"请求失败: {e}")
@@ -69,6 +74,7 @@ class ListPageNode(BaseNode):
         for f in self.parse_rules.get("fields", []):
             val = ip.extract_first(f["selector"], f.get("selector_type", default_type))
             if f.get("clean_rules"):
+                from app.engine.parser import UniversalParser
                 val = UniversalParser.apply_clean_rules(val, f["clean_rules"])
             if val: extra[f["name"]] = val
         return extra
