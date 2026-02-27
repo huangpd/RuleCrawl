@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional
 from app.engine.context import CrawlContext
+from app.core.downloader import DownloaderFactory, BaseDownloader
 
 
 @dataclass
@@ -69,6 +70,12 @@ class BaseNode(ABC):
         if self.request_config.get("cookies"):
             cookies.update(self.request_config.get("cookies"))
         return cookies
+
+    async def get_downloader(self) -> BaseDownloader:
+        """获取当前节点指定的下载器实例"""
+        # 默认使用 httpx，用户可以在配置中指定 downloader_type
+        dtype = self.request_config.get("downloader_type", "httpx")
+        return await DownloaderFactory.get_downloader(dtype)
 
     @abstractmethod
     async def execute(self, context: CrawlContext) -> NodeResult:

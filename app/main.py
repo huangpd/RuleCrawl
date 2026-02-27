@@ -14,7 +14,7 @@ from app.database import connect_db, close_db
 
 # 初始化全局统一日志
 setup_logging()
-from app.utils.http_client import init_client, close_client
+from app.core.downloader import DownloaderFactory
 from app.utils.mq_client import init_mq, close_mq
 from app.api.projects import router as projects_router
 from app.api.nodes import router as nodes_router
@@ -26,10 +26,11 @@ from app.api.data import router as data_router
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     await connect_db()
-    await init_client()
+    # 默认初始化标准 HTTPX 下载器
+    await DownloaderFactory.get_downloader("httpx")
     await init_mq()
     yield
-    await close_client()
+    await DownloaderFactory.close_all()
     await close_mq()
     await close_db()
 

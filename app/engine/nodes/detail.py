@@ -1,10 +1,11 @@
 from datetime import datetime, timezone
+import logging
+import uuid
 
 from app.utils.logger import get_logger
 from app.engine.nodes.base import BaseNode, NodeResult
 from app.engine.context import CrawlContext
 from app.engine.parser import UniversalParser
-from app.utils.http_client import fetch
 from app.database import get_db
 
 logger = get_logger(__name__)
@@ -22,14 +23,15 @@ class DetailNode(BaseNode):
             logger.info("处理 data:// 协议，跳过网络请求: %s", context.url)
         else:
             try:
-                response = await fetch(
+                downloader = await self.get_downloader()
+                resp = await downloader.fetch(
                     context.url,
                     method=self.request_config.get("method", "GET"),
                     headers=self.merge_headers(context.headers),
                     cookies=self.merge_cookies(context.cookies),
                     body=self.request_config.get("body")
                 )
-                html = response.text
+                html, content_type = resp.text, resp.content_type
             except Exception as e:
                 logger.error("详情页请求失败: URL=%s, Error=%s", context.url, e)
                 return NodeResult(success=False, error=f"网络请求失败: {str(e)}", context=context)
@@ -93,7 +95,7 @@ class DetailNode(BaseNode):
             record = {
                 "project_id": context.project_id,
                 "task_id": context.task_id,
-                "node_id": self.config.get("_id"),
+                "node_id": self.config.get("id"),
                 "source_url": context.url,
                 "crawl_time": datetime.now(timezone.utc),
                 "data": extracted_data,

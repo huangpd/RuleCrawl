@@ -188,6 +188,9 @@ async function selectProject(project) {
     app.state.currentProjectId = project._id;
     app.state.currentProjectName = project.name;
 
+    // ── 修复状态污染：切换项目前清空上一个任务的统计显示 ──
+    resetTaskUI();
+
     document.getElementById('workspaceProjectName').textContent = project.name;
     switchView('view-workspace');
 
@@ -200,6 +203,15 @@ async function selectProject(project) {
         switchTab('tab-start');
         newNode('start');
     }
+}
+
+/** 重置任务相关的 UI 显示 */
+function resetTaskUI() {
+    const statusEl = document.getElementById('taskStatus');
+    const statsEl = document.getElementById('taskStats');
+    if (statusEl) statusEl.innerHTML = '';
+    if (statsEl) statsEl.textContent = '';
+    app.state.currentTaskId = null; // 清除当前任务 ID 引用
 }
 
 // ============ 模态框逻辑 ============
@@ -294,8 +306,21 @@ function pollTaskStatus(taskId) {
     const statusEl = document.getElementById('taskStatus');
     const statsEl = document.getElementById('taskStats');
     const interval = setInterval(async () => {
+        // ── 安全检查：如果项目已切换，停止该任务的轮询 ──
+        if (!app.state.currentProjectId) {
+            clearInterval(interval);
+            return;
+        }
+
         try {
             const task = await api.getTaskStatus(taskId);
+            
+            // ── 安全检查：如果返回的任务项目 ID 与当前项目不匹配，停止轮询 ──
+            if (task.project_id !== app.state.currentProjectId) {
+                clearInterval(interval);
+                return;
+            }
+
             if (statusEl) {
                 statusEl.innerHTML = `<span class="status-badge ${task.status}">${task.status}</span>`;
             }
