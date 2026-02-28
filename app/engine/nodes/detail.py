@@ -9,6 +9,9 @@ from app.engine.context import TaskContext
 from app.models.download import DownloadResponse
 from app.engine.parser import UniversalParser
 from app.database import get_db
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 @NodeRegistry.register("detail")
 class DetailNode(BaseNode):
@@ -19,14 +22,21 @@ class DetailNode(BaseNode):
         parser = UniversalParser(response.text, response.content_type)
         extracted_data = {}
         
-        # 1. 字段解析
-        for rule in self.parse_rules.get("fields", []):
-            name, sel, stype = rule.get("name"), rule.get("selector"), rule.get("selector_type", "xpath")
-            if name and sel:
-                val = parser.extract_all(sel, stype)
+        field_rules = self.parse_rules.get("fields", [])
+        for rule in field_rules:
+            name, selector, selector_type = rule.get("name"), rule.get("selector"), rule.get("selector_type", "xpath")
+            if name and selector:
+                value = parser.extract_all(selector, selector_type)
                 if rule.get("clean_rules"):
-                    val = UniversalParser.apply_clean_rules(val, rule["clean_rules"])
-                if val: extracted_data[name] = val
+                    value = UniversalParser.apply_clean_rules(value, rule["clean_rules"])
+                
+                # ── 核心逻辑：必填校验 ──
+                if rule.get("required") and not value:
+                    logger.warning(f"详情页必填字段 [{name}] 缺失，丢弃记录: {ctx.url}")
+                    return NodeResult(success=False, error=f"必填字段 [{name}] 缺失", context=ctx)
+                
+                if value:
+                    extracted_data[name] = value
 
         # 2. 数据合并
         extracted_data["detail_url"] = ctx.url

@@ -25,6 +25,7 @@ class FieldRule(BaseModel):
     selector_type: Literal["xpath", "css", "jsonpath", "regex", "text"] = Field(
         "xpath", description="选择器类型"
     )
+    required: bool = Field(False, description="是否必填（为空则丢弃整条记录）")
     clean_rules: list[CleanRule] = Field(default_factory=list, description="清洗规则列表")
 
 
