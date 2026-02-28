@@ -451,6 +451,9 @@ function addDetailField(fieldData = null) {
             <option value="text">Text</option>
         </select>
         <input class="form-input field-selector" placeholder="选择器表达式" style="flex:1">
+        <label class="form-checkbox-label" title="若此字段解析为空，则丢弃整条记录">
+            <input type="checkbox" class="field-required"> 必填
+        </label>
         <button class="btn btn-ghost btn-xs field-clean-btn ${rulesCount > 0 ? 'active' : ''}" onclick="openCleanRulesModal(this)">
             ${rulesCount > 0 ? `✨ 清洗(${rulesCount})` : '✨ 清洗'}
         </button>
@@ -461,6 +464,7 @@ function addDetailField(fieldData = null) {
         row.querySelector('.field-name').value = fieldData.name || '';
         row.querySelector('.field-type').value = fieldData.selector_type || 'xpath';
         row.querySelector('.field-selector').value = fieldData.selector || '';
+        row.querySelector('.field-required').checked = !!fieldData.required;
     }
 
     container.appendChild(row);
@@ -474,12 +478,13 @@ function collectDetailFields() {
         const name = row.querySelector('.field-name')?.value?.trim();
         const selector = row.querySelector('.field-selector')?.value?.trim();
         const selectorType = row.querySelector('.field-type')?.value;
+        const isRequired = !!row.querySelector('.field-required')?.checked;
         const cleanRulesJson = row.dataset.cleanRules;
         let cleanRules = [];
         try { cleanRules = cleanRulesJson ? JSON.parse(cleanRulesJson) : []; } catch (e) { }
 
         if (name && selector) {
-            fields.push({ name, selector, selector_type: selectorType, clean_rules: cleanRules });
+            fields.push({ name, selector, selector_type: selectorType, required: isRequired, clean_rules: cleanRules });
         }
     });
     return fields;
@@ -518,6 +523,9 @@ function addListField(fieldData = null) {
             <option value="text">Text</option>
         </select>
         <input class="form-input field-selector" placeholder="选择器表达式" style="flex:1">
+        <label class="form-checkbox-label">
+            <input type="checkbox" class="field-required"> 必填
+        </label>
         <button class="btn btn-ghost btn-xs field-clean-btn ${rulesCount > 0 ? 'active' : ''}" onclick="openCleanRulesModal(this)">
             ${rulesCount > 0 ? `✨ 清洗(${rulesCount})` : '✨ 清洗'}
         </button>
@@ -527,6 +535,7 @@ function addListField(fieldData = null) {
         row.querySelector('.field-name').value = fieldData.name || '';
         row.querySelector('.field-type').value = fieldData.selector_type || 'xpath';
         row.querySelector('.field-selector').value = fieldData.selector || '';
+        row.querySelector('.field-required').checked = !!fieldData.required;
     }
     container.appendChild(row);
 }
@@ -540,12 +549,13 @@ function collectListFields() {
         const name = row.querySelector('.field-name')?.value?.trim();
         const selector = row.querySelector('.field-selector')?.value?.trim();
         const selectorType = row.querySelector('.field-type')?.value;
+        const isRequired = !!row.querySelector('.field-required')?.checked;
         const cleanRulesJson = row.dataset.cleanRules;
         let cleanRules = [];
         try { cleanRules = cleanRulesJson ? JSON.parse(cleanRulesJson) : []; } catch (e) { }
 
         if (name && selector) {
-            fields.push({ name, selector, selector_type: selectorType, is_link: false, clean_rules: cleanRules });
+            fields.push({ name, selector, selector_type: selectorType, required: isRequired, is_link: false, clean_rules: cleanRules });
         }
     });
     return fields;

@@ -4,9 +4,12 @@
 
 import re
 from typing import Optional
+from app.utils.logger import get_logger
 from app.engine.nodes.base import BaseNode, NodeResult, NodeRegistry
 from app.engine.context import TaskContext
 from app.models.download import DownloadResponse
+
+logger = get_logger(__name__)
 
 @NodeRegistry.register("start")
 class StartNode(BaseNode):
