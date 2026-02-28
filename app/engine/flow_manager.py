@@ -31,6 +31,7 @@ class FlowManager:
         self._rmq_channel: Optional[aio_pika.Channel] = None
         self._task_queue_name = f"project_{project_id}"
         self._control_exchange_name = "rulecrawl_controls"
+        self._control_task: Optional[asyncio.Task] = None
 
     async def _setup_mq(self):
         """初始化 MQ，通过全局连接建立 Channel"""
@@ -43,7 +44,8 @@ class FlowManager:
         )
         control_queue = await self._rmq_channel.declare_queue("", exclusive=True)
         await control_queue.bind(self._control_exchange)
-        asyncio.create_task(self._listen_controls(control_queue))
+        # 记录控制监听任务句柄
+        self._control_task = asyncio.create_task(self._listen_controls(control_queue))
 
     async def _get_queue_message_count(self) -> int:
         temp_q = await self._rmq_channel.declare_queue(self._task_queue_name, durable=True)
@@ -120,6 +122,14 @@ class FlowManager:
             logger.error(f"引擎崩溃: {e}", exc_info=True)
             await db.tasks.update_one({"_id": self.task_id}, {"$set": {"status": "failed", "error_message": str(e)}})
         finally:
+            # ── 核心修复：清理后台监听任务 ──
+            if self._control_task:
+                self._control_task.cancel()
+                try:
+                    await self._control_task
+                except asyncio.CancelledError:
+                    pass
+            
             if self._rmq_channel: await self._rmq_channel.close()
 
     async def _worker(self):
