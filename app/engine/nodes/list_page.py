@@ -45,16 +45,22 @@ class ListPageNode(BaseNode):
                         merged_data.update(fields_data)
                         follow_ups.append((self.callback_node_id, ctx.clone(url=full_url, parent_data=merged_data)))
                 else:
-                    # 模式 B: 数据透传
+                    # 模式 B: 数据透传 (无 Link Selector)
+                    # 提取当前 Item 的字段 (严格遵循用户配置)
                     fields_data = self._extract_fields(ip, parser_type)
                     if fields_data is None: continue # 必填项缺失，丢弃
                     
-                    if item_type == "jsonpath" and ip._json_data:
-                        fields_data.update(ip._json_data if isinstance(ip._json_data, dict) else {"_json": ip._json_data})
+                    # ── 核心修复：只有当用户未定义字段规则时，才全量透传原始 JSON ──
+                    if not fields_data and item_type == "jsonpath" and ip._json_data:
+                        if isinstance(ip._json_data, dict):
+                            fields_data = ip._json_data.copy()
+                        else:
+                            fields_data = {"_json": ip._json_data}
                     
                     virtual_ctx = ctx.clone(
                         url=f"data://{uuid.uuid4()}", 
                         source_url=ctx.url,
+                        # 合并现有 parent_data 和本次显式提取的字段
                         parent_data={**ctx.parent_data, **fields_data, "_virtual_html": json.dumps(fields_data, ensure_ascii=False)}
                     )
                     follow_ups.append((self.callback_node_id, virtual_ctx))

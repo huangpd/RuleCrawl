@@ -1,95 +1,83 @@
 /**
- * RuleCrawl 标签页管理
- * 处理 5 个标签页的表单渲染、数据加载和保存
+ * RuleCrawl 标签页管理 - 纯净 JSON 版
+ * 统一所有结构化请求参数为 JSON 录入，URL 保持列表模式。
  */
 
-// ============ 清洗规则编辑器状态 ============
-app.state.currentEditingFieldRow = null; // 当前正在编辑规则的字段行元素
-app.state.tempCleanRules = [];          // 临时存储正在编辑的规则列表
+// ============ 全局工具函数 ============
 
-/** 打开清洗规则模态框 */
+/** 解析宽松 JSON (支持单引号, Python 格式) */
+function parseRelaxedJSON(text) {
+    if (!text || !text.trim()) return {};
+    try { return JSON.parse(text); } catch (e) {}
+    try {
+        const fn = new Function('None', 'True', 'False', `return (${text});`);
+        const result = fn(null, true, false);
+        return (typeof result === 'object' && result !== null) ? result : {};
+    } catch (e2) {
+        throw new Error("JSON 格式错误，请检查输入是否为有效的对象格式 {}");
+    }
+}
+
+/** 格式化显示 JSON */
+function safeStringify(obj) {
+    if (!obj || typeof obj !== 'object') return '';
+    try { return JSON.stringify(obj, null, 2); } catch (e) { return ''; }
+}
+
+/** 添加起始 URL 行 */
+window.addStartUrlRow = function(url = '') {
+    const container = document.getElementById('start-url-list');
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'field-row url-row';
+    row.style.gridTemplateColumns = '1fr 40px';
+    row.style.marginBottom = '4px';
+    row.innerHTML = `<input class="form-input" placeholder="https://..." style="flex:1" value="${url}"><button type="button" class="field-remove-btn" onclick="this.parentElement.remove()">✕</button>`;
+    container.appendChild(row);
+};
+
+// ============ 内部逻辑 ============
+
+app.state.currentEditingFieldRow = null;
+app.state.tempCleanRules = [];
+
 function openCleanRulesModal(btn) {
     const row = btn.closest('.field-row');
     app.state.currentEditingFieldRow = row;
-
-    // 获取已有的规则
     const rulesData = row.dataset.cleanRules;
-    try {
-        app.state.tempCleanRules = rulesData ? JSON.parse(rulesData) : [];
-    } catch (e) {
-        app.state.tempCleanRules = [];
-    }
-
+    try { app.state.tempCleanRules = rulesData ? JSON.parse(rulesData) : []; } catch (e) { app.state.tempCleanRules = []; }
     renderCleanRulesList();
     document.getElementById('cleanRulesModal').style.display = 'flex';
 }
 
-/** 关闭清洗规则模态框 */
-function closeCleanRulesModal() {
-    document.getElementById('cleanRulesModal').style.display = 'none';
-    app.state.currentEditingFieldRow = null;
-}
+function closeCleanRulesModal() { document.getElementById('cleanRulesModal').style.display = 'none'; }
 
-/** 渲染规则列表 */
 function renderCleanRulesList() {
     const container = document.getElementById('cleanRulesList');
     container.innerHTML = '';
-
-    if (app.state.tempCleanRules.length === 0) {
-        container.innerHTML = '<div class="empty-state" style="padding:20px; font-size:13px;">暂无规则，请点击下方按钮添加</div>';
-        return;
-    }
-
+    if (app.state.tempCleanRules.length === 0) { container.innerHTML = '<div class="empty-state">暂无规则</div>'; return; }
     app.state.tempCleanRules.forEach((rule, index) => {
         const row = document.createElement('div');
         row.className = 'field-row clean-rule-row';
-        row.style.marginBottom = '8px';
-
         let inputsHtml = '';
-        if (rule.type === 'trim') {
-            inputsHtml = '<span style="flex:1; color:var(--text-dim); font-size:12px;">删除字符串前后的空白字符</span>';
-        } else if (rule.type === 'replace' || rule.type === 'regex_sub') {
-            inputsHtml = `
-                <input class="form-input rule-old" style="flex:1" placeholder="${rule.type === 'replace' ? '待替换字符' : '正则表达式'}" value="${rule.old || ''}">
-                <input class="form-input rule-new" style="flex:1" placeholder="替换为" value="${rule.new || ''}">
-            `;
+        if (rule.type === 'trim') { inputsHtml = '<span style="flex:1; font-size:12px; color:var(--text-dim);">删除前后空格</span>'; }
+        else if (rule.type === 'replace' || rule.type === 'regex_sub') {
+            inputsHtml = `<input class="form-input rule-old" style="flex:1" placeholder="查找" value="${rule.old || ''}"><input class="form-input rule-new" style="flex:1" placeholder="替换" value="${rule.new || ''}">`;
         } else if (rule.type === 'prefix' || rule.type === 'suffix') {
-            inputsHtml = `
-                <input class="form-input rule-value" style="flex:1" placeholder="${rule.type === 'prefix' ? '前缀字符串' : '后缀字符串'}" value="${rule.value || ''}">
-            `;
+            inputsHtml = `<input class="form-input rule-value" style="flex:1" placeholder="内容" value="${rule.value || ''}">`;
         }
-
-        row.innerHTML = `
-            <span class="flow-node-badge" style="width:80px; text-align:center; background:var(--glass-bg);">${rule.type.toUpperCase()}</span>
-            ${inputsHtml}
-            <button class="field-remove-btn" onclick="removeCleanRuleRow(${index})">✕</button>
-        `;
+        row.innerHTML = `<span class="flow-node-badge">${rule.type.toUpperCase()}</span>${inputsHtml}<button type="button" onclick="removeCleanRuleRow(${index})">✕</button>`;
         container.appendChild(row);
     });
 }
 
-/** 添加一行规则 */
-function addCleanRuleRow(type) {
-    // 先同步当前输入的数据到 tempCleanRules，防止丢失
-    syncCleanRulesFromUI();
-    app.state.tempCleanRules.push({ type });
-    renderCleanRulesList();
-}
-
-/** 移除一行规则 */
-function removeCleanRuleRow(index) {
-    syncCleanRulesFromUI();
-    app.state.tempCleanRules.splice(index, 1);
-    renderCleanRulesList();
-}
-
-/** 从 UI 同步数据到临时状态 */
+function addCleanRuleRow(type) { syncCleanRulesFromUI(); app.state.tempCleanRules.push({ type }); renderCleanRulesList(); }
+function removeCleanRuleRow(index) { syncCleanRulesFromUI(); app.state.tempCleanRules.splice(index, 1); renderCleanRulesList(); }
 function syncCleanRulesFromUI() {
     const rows = document.querySelectorAll('#cleanRulesList .clean-rule-row');
     rows.forEach((row, index) => {
         const rule = app.state.tempCleanRules[index];
         if (!rule) return;
-
         if (rule.type === 'replace' || rule.type === 'regex_sub') {
             rule.old = row.querySelector('.rule-old')?.value;
             rule.new = row.querySelector('.rule-new')?.value;
@@ -99,217 +87,154 @@ function syncCleanRulesFromUI() {
     });
 }
 
-/** 确认保存规则到字段行 */
 function confirmSaveCleanRules() {
     syncCleanRulesFromUI();
     if (app.state.currentEditingFieldRow) {
         app.state.currentEditingFieldRow.dataset.cleanRules = JSON.stringify(app.state.tempCleanRules);
-
-        // 更新按钮文案，显示规则数量
         const btn = app.state.currentEditingFieldRow.querySelector('.field-clean-btn');
-        if (btn) {
-            btn.textContent = app.state.tempCleanRules.length > 0 ? `✨ 清洗(${app.state.tempCleanRules.length})` : '✨ 清洗';
-            btn.classList.toggle('active', app.state.tempCleanRules.length > 0);
-        }
+        if (btn) btn.textContent = `✨ 清洗(${app.state.tempCleanRules.length})`;
     }
     closeCleanRulesModal();
-    showToast('规则已存入字段配置', 'success');
 }
 
-/** 切换标签页 */
 function switchTab(tabId) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
     const btn = document.querySelector(`[data-tab="${tabId}"]`);
-    const pane = document.getElementById(tabId);
     if (btn) btn.classList.add('active');
+    const pane = document.getElementById(tabId);
     if (pane) pane.classList.add('active');
 }
 
-/** 加载节点数据到对应表单 */
+/** 加载节点数据到表单 */
 function loadNodeToForm(node) {
     const type = node.node_type;
     const rc = node.request_config || {};
     const pr = node.parse_rules || {};
     const pg = node.pagination || {};
 
-    // 通用字段
     const nameEl = document.getElementById(`${type}-name`);
     if (nameEl) nameEl.value = node.name || '';
 
-    // 请求配置 (起始页 URL 列表特殊处理)
+    // 起始页加载
     if (type === 'start') {
-        let urls = [];
-        if (Array.isArray(rc.url)) {
-            urls = rc.url;
-        } else {
-            urls = (rc.url || '').split('\n').filter(u => u.trim());
-        }
+        const urls = Array.isArray(rc.url) ? rc.url : (rc.url || '').split('\n').filter(u => u.trim());
         renderStartUrlList(urls);
+        // 全 JSON 文本框回显
+        document.getElementById('start-params').value = safeStringify(rc.params);
+        document.getElementById('start-headers').value = safeStringify(rc.headers);
+        document.getElementById('start-cookies').value = safeStringify(rc.cookies);
+        document.getElementById('start-body').value = rc.body || '';
+        document.getElementById('start-body-type').value = rc.body_type || 'json';
     } else {
         const urlEl = document.getElementById(`${type}-url`);
-        if (urlEl) urlEl.value = rc.url || '';
+        if (urlEl) urlEl.value = Array.isArray(rc.url) ? (rc.url[0] || '') : (rc.url || '');
     }
 
     const methodEl = document.getElementById(`${type}-method`);
     if (methodEl) methodEl.value = rc.method || 'GET';
-
-    const headersEl = document.getElementById(`${type}-headers`);
-    if (headersEl) {
-        // Headers as JSON string
-        try {
-            headersEl.value = rc.headers ? JSON.stringify(rc.headers, null, 2) : '';
-        } catch (e) {
-            headersEl.value = '';
-        }
-    }
-
-    // Removed cookiesEl handling
-
     const bodyEl = document.getElementById(`${type}-body`);
     if (bodyEl) bodyEl.value = rc.body || '';
 
-    // 解析规则
-    // parser_type 默认为 xpath，不再从 UI 读取
-
     const itemSelectorEl = document.getElementById(`${type}-item-selector`);
     if (itemSelectorEl) itemSelectorEl.value = pr.item_selector || '';
-
     const itemSelectorTypeEl = document.getElementById(`${type}-item-selector-type`);
     if (itemSelectorTypeEl) itemSelectorTypeEl.value = pr.item_selector_type || 'xpath';
-
     const linkSelectorEl = document.getElementById(`${type}-link-selector`);
     if (linkSelectorEl) linkSelectorEl.value = pr.link_selector || '';
-
     const linkSelectorTypeEl = document.getElementById(`${type}-link-selector-type`);
     if (linkSelectorTypeEl) linkSelectorTypeEl.value = pr.link_selector_type || 'xpath';
 
-    // 翻页
     const pgSelectorEl = document.getElementById(`${type}-pg-selector`);
     if (pgSelectorEl) pgSelectorEl.value = pg.selector || '';
-
     const pgTypeEl = document.getElementById(`${type}-pg-selector-type`);
     if (pgTypeEl) pgTypeEl.value = pg.selector_type || 'xpath';
-
     const pgMaxEl = document.getElementById(`${type}-pg-max`);
     if (pgMaxEl) pgMaxEl.value = pg.max_pages || 10;
 
-    // 回调选择器
     const cbEl = document.getElementById(`${type}-callback`);
-    if (cbEl) {
-        updateCallbackOptions(cbEl, node._id);
-        cbEl.value = node.callback_node_id || '';
-    }
+    if (cbEl) { updateCallbackOptions(cbEl, node._id); cbEl.value = node.callback_node_id || ''; }
 
-    // 渲染下一步操作区
     renderNextStepSection(type, node.callback_node_id);
 
-    // 详情页字段
     if (type === 'detail') {
         renderDetailFields(pr.fields || []);
-
-        // 去重配置回显
         const dedupTypeEl = document.getElementById('detail-dedup-type');
-        if (dedupTypeEl) {
-            dedupTypeEl.value = pr.deduplication_type || 'none';
-            toggleDedupField();
-        }
-        
-        // 刷新下拉列表后再设置值
+        if (dedupTypeEl) { dedupTypeEl.value = pr.deduplication_type || 'none'; toggleDedupField(); }
         refreshDedupFieldList();
         const dedupFieldEl = document.getElementById('detail-dedup-field');
-        if (dedupFieldEl) {
-            dedupFieldEl.value = pr.deduplication_field || '';
-        }
+        if (dedupFieldEl) dedupFieldEl.value = pr.deduplication_field || '';
     }
+    if (type === 'list') renderListFields(pr.fields || []);
 
-    // 列表页透传字段
-    if (type === 'list') {
-        renderListFields(pr.fields || []);
-    }
-
-    // 标记当前编辑的节点 ID
     app.state.editingNodeId = node._id;
     app.state.editingNodeType = type;
 }
 
-/** 刷新详情页去重字段下拉列表 */
+function renderStartUrlList(urls) {
+    const container = document.getElementById('start-url-list');
+    if (!container) return;
+    container.innerHTML = '';
+    if (!urls || urls.length === 0) { window.addStartUrlRow(); return; }
+    urls.forEach(url => window.addStartUrlRow(url));
+}
+
 function refreshDedupFieldList() {
     const select = document.getElementById('detail-dedup-field');
     if (!select) return;
-
-    const currentValue = select.value;
+    const currentVal = select.value;
     const fields = collectDetailFields();
-    
-    let html = '<option value="">-- 请选择去重字段 --</option>';
+    select.innerHTML = '<option value="">-- 请选择去重字段 --</option>';
     fields.forEach(f => {
-        html += `<option value="${f.name}">${f.name}</option>`;
+        const opt = document.createElement('option');
+        opt.value = f.name; opt.textContent = f.name;
+        select.appendChild(opt);
     });
-    
-    select.innerHTML = html;
-    // 尝试恢复之前选中的值
-    select.value = currentValue;
+    select.value = currentVal;
 }
 
-/** 更新回调下拉选项 */
 function updateCallbackOptions(selectEl, excludeId) {
     const current = selectEl.value;
     selectEl.innerHTML = '<option value="">无（终点）</option>';
     app.state.nodes.forEach(n => {
         if (n._id !== excludeId) {
             const opt = document.createElement('option');
-            opt.value = n._id;
-            opt.textContent = `${NODE_TYPE_LABELS[n.node_type]} - ${n.name}`;
+            opt.value = n._id; opt.textContent = `${NODE_TYPE_LABELS[n.node_type]} - ${n.name}`;
             selectEl.appendChild(opt);
         }
     });
     selectEl.value = current;
 }
 
-/** 更新所有标签页中的回调下拉选项 */
 function updateAllCallbacks() {
-    ['start', 'intermediate', 'list', 'next'].forEach(type => {
+    ['start', 'list'].forEach(type => {
         const cbEl = document.getElementById(`${type}-callback`);
-        if (cbEl) {
-            updateCallbackOptions(cbEl, app.state.editingNodeId);
-        }
+        if (cbEl) updateCallbackOptions(cbEl, app.state.editingNodeId);
     });
 }
 
-/** 渲染起始页 URL 列表 */
-function renderStartUrlList(urls) {
-    const container = document.getElementById('start-url-list');
-    if (!container) return;
-    container.innerHTML = '';
-    if (!urls || urls.length === 0) {
-        addStartUrlRow();
-        return;
-    }
-    urls.forEach(url => addStartUrlRow(url));
-}
-
-/** 添加一个起始 URL 行 */
-function addStartUrlRow(url = '') {
-    const container = document.getElementById('start-url-list');
-    if (!container) return;
-    const row = document.createElement('div');
-    row.className = 'field-row url-row';
-    row.innerHTML = `
-        <input class="form-input" placeholder="https://..." style="flex:1" value="${url}">
-        <button class="field-remove-btn" onclick="this.parentElement.remove()">✕</button>
-    `;
-    container.appendChild(row);
-}
-
-/** 从表单收集节点数据 */
 function collectNodeData(type) {
     let urlValue = [];
+    let requestConfig = {};
     if (type === 'start') {
-        const inputs = document.querySelectorAll('#start-url-list .url-row input');
-        urlValue = Array.from(inputs).map(i => i.value.trim()).filter(v => v);
+        const urlInputs = document.querySelectorAll('#start-url-list .url-row input');
+        urlValue = Array.from(urlInputs).map(i => i.value.trim()).filter(v => v);
+        
+        try {
+            requestConfig = {
+                params: parseRelaxedJSON(document.getElementById('start-params').value),
+                headers: parseRelaxedJSON(document.getElementById('start-headers').value),
+                cookies: parseRelaxedJSON(document.getElementById('start-cookies').value),
+                body: document.getElementById('start-body').value || null,
+                body_type: document.getElementById('start-body-type').value || 'json'
+            };
+        } catch (e) {
+            showToast(e.message, 'error');
+            throw e;
+        }
     } else {
         const val = document.getElementById(`${type}-url`)?.value?.trim();
-        urlValue = val ? [val] : []; // 统一为数组格式
+        urlValue = val ? [val] : [];
     }
 
     const data = {
@@ -318,11 +243,14 @@ function collectNodeData(type) {
         request_config: {
             url: urlValue,
             method: document.getElementById(`${type}-method`)?.value || 'GET',
-            headers: parseJSONHeaders(document.getElementById(`${type}-headers`)?.value),
-            body: document.getElementById(`${type}-body`)?.value || null,
+            params: type === 'start' ? requestConfig.params : {},
+            headers: type === 'start' ? requestConfig.headers : {},
+            cookies: type === 'start' ? requestConfig.cookies : {},
+            body: type === 'start' ? requestConfig.body : (document.getElementById(`${type}-body`)?.value || null),
+            body_type: type === 'start' ? requestConfig.body_type : 'json'
         },
         parse_rules: {
-            parser_type: 'xpath', // 默认值
+            parser_type: 'xpath', 
             item_selector: document.getElementById(`${type}-item-selector`)?.value || null,
             item_selector_type: document.getElementById(`${type}-item-selector-type`)?.value || 'xpath',
             link_selector: document.getElementById(`${type}-link-selector`)?.value || null,
@@ -331,8 +259,6 @@ function collectNodeData(type) {
         },
         callback_node_id: document.getElementById(`${type}-callback`)?.value || null,
     };
-
-    // 翻页配置收集
     const pgSelector = document.getElementById(`${type}-pg-selector`)?.value;
     if (pgSelector) {
         data.pagination = {
@@ -340,138 +266,83 @@ function collectNodeData(type) {
             selector_type: document.getElementById(`${type}-pg-selector-type`)?.value || 'xpath',
             max_pages: parseInt(document.getElementById(`${type}-pg-max`)?.value) || 10,
         };
-    } else {
-        data.pagination = null;
     }
-
-    // 详情页字段
     if (type === 'detail') {
         data.parse_rules.fields = collectDetailFields();
         data.parse_rules.deduplication_type = document.getElementById('detail-dedup-type')?.value || 'none';
         data.parse_rules.deduplication_field = document.getElementById('detail-dedup-field')?.value || null;
     }
-
     return data;
 }
 
-/** 保存节点（创建或更新） */
 async function saveNode(type) {
-    if (!app.state.currentProjectId) {
-        showToast('请先选择或创建项目', 'error');
-        return;
-    }
-
-    const data = collectNodeData(type);
-    if (!data.name.trim()) {
-        showToast('请输入节点名称', 'error');
-        return;
-    }
-
+    if (!app.state.currentProjectId) return;
     try {
+        const data = collectNodeData(type);
         let nodeId = app.state.editingNodeId;
-
         if (nodeId && app.state.editingNodeType === type) {
-            // 更新
             await api.updateNode(nodeId, data);
-            showToast(`节点 "${data.name}" 已更新`, 'success');
+            showToast(`节点已更新`, 'success');
         } else {
-            // 创建
             const result = await api.createNode(app.state.currentProjectId, data);
             nodeId = result._id;
-            app.state.editingNodeId = nodeId;
-            app.state.editingNodeType = type;
-            showToast(`节点 "${data.name}" 已创建`, 'success');
-
-            // 如果是从父节点添加的，自动建立关联
-            if (app.state.pendingParentId) {
-                await api.setCallback(app.state.pendingParentId, nodeId);
-                app.state.pendingParentId = null; // 清除状态
-                showToast('已自动关联到父节点', 'success');
-            }
+            app.state.editingNodeId = nodeId; app.state.editingNodeType = type;
+            showToast(`节点已创建`, 'success');
+            if (app.state.pendingParentId) { await api.setCallback(app.state.pendingParentId, nodeId); app.state.pendingParentId = null; }
         }
         await refreshNodes();
-    } catch (e) {
-        showToast('保存失败: ' + e.message, 'error');
-    }
+    } catch (e) { showToast('保存失败: ' + e.message, 'error'); }
 }
 
-/** 清空表单开始新建 */
 function newNode(type) {
-    app.state.editingNodeId = null;
-    app.state.editingNodeType = null;
-    // 清空表单
+    app.state.editingNodeId = null; app.state.editingNodeType = null;
     const form = document.getElementById(`tab-${type}`);
-    if (form) {
-        form.querySelectorAll('input, textarea').forEach(el => el.value = '');
-        form.querySelectorAll('select').forEach(el => el.selectedIndex = 0);
+    if (form) { form.querySelectorAll('input, textarea').forEach(el => el.value = ''); form.querySelectorAll('select').forEach(el => el.selectedIndex = 0); }
+    if (type === 'detail') renderDetailFields([]);
+    if (type === 'list') renderListFields([]);
+    if (type === 'start') { 
+        renderStartUrlList([]); 
+        document.getElementById('start-params').value = '';
+        document.getElementById('start-headers').value = '';
+        document.getElementById('start-cookies').value = '';
     }
-    if (type === 'detail') {
-        renderDetailFields([]);
-    }
-    if (type === 'list') {
-        renderListFields([]);
-    }
-    if (type === 'start') {
-        renderStartUrlList([]);
-    }
-    showToast('已切换到新建模式', 'info');
 }
 
-// ============ 详情页字段管理 ============
-
-/** 渲染详情页字段列表 */
 function renderDetailFields(fields) {
     const container = document.getElementById('detail-fields');
     container.innerHTML = '';
-    if (!fields || fields.length === 0) {
-        addDetailField();
-        return;
-    }
+    if (!fields || fields.length === 0) { addDetailField(); return; }
     fields.forEach(f => addDetailField(f));
 }
 
-/** 添加一个字段行 */
 function addDetailField(fieldData = null) {
     const container = document.getElementById('detail-fields');
     const row = document.createElement('div');
     row.className = 'field-row';
-
-    // 初始化 cleanRules 数据
     const cleanRulesJson = fieldData && fieldData.clean_rules ? JSON.stringify(fieldData.clean_rules) : '[]';
     row.dataset.cleanRules = cleanRulesJson;
-    const rulesCount = fieldData && fieldData.clean_rules ? fieldData.clean_rules.length : 0;
-
     row.innerHTML = `
-        <input class="form-input field-name" placeholder="字段名" style="width:100px" oninput="refreshDedupFieldList()">
-        <select class="form-select field-type" style="width:80px">
-            <option value="xpath">XPath</option>
-            <option value="css">CSS</option>
-            <option value="jsonpath">JsonPath</option>
-            <option value="regex">Regex</option>
-            <option value="text">Text</option>
+        <input class="form-input field-name" placeholder="字段名" oninput="refreshDedupFieldList()">
+        <select class="form-select field-type">
+            <option value="xpath">XPath</option><option value="css">CSS</option><option value="jsonpath">JsonPath</option><option value="regex">Regex</option><option value="text">Text</option>
         </select>
-        <input class="form-input field-selector" placeholder="选择器表达式" style="flex:1">
-        <label class="form-checkbox-label" title="若此字段解析为空，则丢弃整条记录">
-            <input type="checkbox" class="field-required"> 必填
-        </label>
-        <button class="btn btn-ghost btn-xs field-clean-btn ${rulesCount > 0 ? 'active' : ''}" onclick="openCleanRulesModal(this)">
-            ${rulesCount > 0 ? `✨ 清洗(${rulesCount})` : '✨ 清洗'}
-        </button>
-        <button class="field-remove-btn" onclick="this.parentElement.remove(); refreshDedupFieldList();">✕</button>
+        <input class="form-input field-selector" placeholder="选择器表达式">
+        <div style="display:flex; align-items:center; gap:8px; justify-content: flex-end;">
+            <label class="form-checkbox-label" style="white-space:nowrap;"><input type="checkbox" class="field-required"> 必填</label>
+            <button class="btn btn-ghost btn-xs field-clean-btn" onclick="openCleanRulesModal(this)" style="min-width:65px;">✨ 清洗</button>
+            <button class="field-remove-btn" onclick="this.parentElement.parentElement.remove(); refreshDedupFieldList();">✕</button>
+        </div>
     `;
-
     if (fieldData) {
         row.querySelector('.field-name').value = fieldData.name || '';
         row.querySelector('.field-type').value = fieldData.selector_type || 'xpath';
         row.querySelector('.field-selector').value = fieldData.selector || '';
         row.querySelector('.field-required').checked = !!fieldData.required;
     }
-
     container.appendChild(row);
     refreshDedupFieldList();
 }
 
-/** 收集详情页字段 */
 function collectDetailFields() {
     const fields = [];
     document.querySelectorAll('#detail-fields .field-row').forEach(row => {
@@ -480,56 +351,36 @@ function collectDetailFields() {
         const selectorType = row.querySelector('.field-type')?.value;
         const isRequired = !!row.querySelector('.field-required')?.checked;
         const cleanRulesJson = row.dataset.cleanRules;
-        let cleanRules = [];
-        try { cleanRules = cleanRulesJson ? JSON.parse(cleanRulesJson) : []; } catch (e) { }
-
-        if (name && selector) {
-            fields.push({ name, selector, selector_type: selectorType, required: isRequired, clean_rules: cleanRules });
-        }
+        let cleanRules = []; try { cleanRules = cleanRulesJson ? JSON.parse(cleanRulesJson) : []; } catch (e) { }
+        if (name && selector) fields.push({ name, selector, selector_type: selectorType, required: isRequired, clean_rules: cleanRules });
     });
     return fields;
 }
 
-// ============ 列表页透传字段管理 ============
-
-/** 渲染列表页透传字段 */
 function renderListFields(fields) {
     const container = document.getElementById('list-fields');
     if (!container) return;
-    container.innerHTML = '';
-    // 只渲染非链接字段（is_link !== true）
-    const passFields = (fields || []).filter(f => !f.is_link);
-    passFields.forEach(f => addListField(f));
+    container.innerHTML = ''; (fields || []).forEach(f => addListField(f));
 }
 
-/** 添加一个列表页透传字段行 */
 function addListField(fieldData = null) {
     const container = document.getElementById('list-fields');
     if (!container) return;
     const row = document.createElement('div');
     row.className = 'field-row';
-
     const cleanRulesJson = fieldData && fieldData.clean_rules ? JSON.stringify(fieldData.clean_rules) : '[]';
     row.dataset.cleanRules = cleanRulesJson;
-    const rulesCount = fieldData && fieldData.clean_rules ? fieldData.clean_rules.length : 0;
-
     row.innerHTML = `
-        <input class="form-input field-name" placeholder="字段名 (如 author)" style="width:120px">
-        <select class="form-select field-type" style="width:80px">
-            <option value="xpath">XPath</option>
-            <option value="css">CSS</option>
-            <option value="jsonpath">JsonPath</option>
-            <option value="regex">Regex</option>
-            <option value="text">Text</option>
+        <input class="form-input field-name" placeholder="字段名 (如 author)">
+        <select class="form-select field-type">
+            <option value="xpath">XPath</option><option value="css">CSS</option><option value="jsonpath">JsonPath</option><option value="regex">Regex</option><option value="text">Text</option>
         </select>
-        <input class="form-input field-selector" placeholder="选择器表达式" style="flex:1">
-        <label class="form-checkbox-label">
-            <input type="checkbox" class="field-required"> 必填
-        </label>
-        <button class="btn btn-ghost btn-xs field-clean-btn ${rulesCount > 0 ? 'active' : ''}" onclick="openCleanRulesModal(this)">
-            ${rulesCount > 0 ? `✨ 清洗(${rulesCount})` : '✨ 清洗'}
-        </button>
-        <button class="field-remove-btn" onclick="this.parentElement.remove()">✕</button>
+        <input class="form-input field-selector" placeholder="选择器表达式">
+        <div style="display:flex; align-items:center; gap:8px; justify-content: flex-end;">
+            <label class="form-checkbox-label" style="white-space:nowrap;"><input type="checkbox" class="field-required"> 必填</label>
+            <button class="btn btn-ghost btn-xs field-clean-btn" onclick="openCleanRulesModal(this)" style="min-width:65px;">清洗</button>
+            <button class="field-remove-btn" onclick="this.parentElement.parentElement.remove()">✕</button>
+        </div>
     `;
     if (fieldData) {
         row.querySelector('.field-name').value = fieldData.name || '';
@@ -540,154 +391,45 @@ function addListField(fieldData = null) {
     container.appendChild(row);
 }
 
-/** 收集列表页透传字段 */
 function collectListFields() {
     const fields = [];
-    const container = document.getElementById('list-fields');
-    if (!container) return fields;
-    container.querySelectorAll('.field-row').forEach(row => {
+    document.querySelectorAll('#list-fields .field-row').forEach(row => {
         const name = row.querySelector('.field-name')?.value?.trim();
         const selector = row.querySelector('.field-selector')?.value?.trim();
         const selectorType = row.querySelector('.field-type')?.value;
         const isRequired = !!row.querySelector('.field-required')?.checked;
         const cleanRulesJson = row.dataset.cleanRules;
-        let cleanRules = [];
-        try { cleanRules = cleanRulesJson ? JSON.parse(cleanRulesJson) : []; } catch (e) { }
-
-        if (name && selector) {
-            fields.push({ name, selector, selector_type: selectorType, required: isRequired, is_link: false, clean_rules: cleanRules });
-        }
+        let cleanRules = []; try { cleanRules = cleanRulesJson ? JSON.parse(cleanRulesJson) : []; } catch (e) { }
+        if (name && selector) fields.push({ name, selector, selector_type: selectorType, required: isRequired, clean_rules: cleanRules });
     });
     return fields;
 }
 
-// ============ 节点类型模态框 ============
+function showAddChildNode(parentNodeId) { app.state.pendingParentId = parentNodeId; document.getElementById('nodeTypeModal').style.display = 'flex'; }
+function selectNodeType(type) { closeNodeTypeModal(); const tabMap = { 'list': 'tab-list', 'detail': 'tab-detail' }; switchTab(tabMap[type]); newNode(type); }
+function closeNodeTypeModal() { document.getElementById('nodeTypeModal').style.display = 'none'; }
 
-/** 显示添加子节点模态框 */
-function showAddChildNode(parentNodeId) {
-    app.state.pendingParentId = parentNodeId;
-    document.getElementById('nodeTypeModal').style.display = 'flex';
-}
-
-/** 选择节点类型（从模态框） */
-function selectNodeType(type) {
-    closeNodeTypeModal();
-    const tabMap = {
-        'list': 'tab-list',
-        'detail': 'tab-detail',
-        'next': 'tab-next',
-        'intermediate': 'tab-intermediate'
-    };
-    switchTab(tabMap[type]);
-    newNode(type);
-    showToast('请配置新节点', 'info');
-}
-
-/** 关闭模态框 */
-function closeNodeTypeModal() {
-    document.getElementById('nodeTypeModal').style.display = 'none';
-    if (!app.state.editingNodeId) {
-        // 如果没有正在编辑的节点（取消操作），可能需要清理 pendingParentId
-        app.state.pendingParentId = null;
-    }
-}
-
-// ============ 下一步操作区渲染 ============
-
-/** 渲染下一步操作区 */
 function renderNextStepSection(nodeType, callbackNodeId) {
     const container = document.getElementById(`${nodeType}-next-step`);
     if (!container) return;
-
     if (callbackNodeId) {
         const targetNode = app.state.nodes.find(n => n._id === callbackNodeId);
-        const targetName = targetNode ? targetNode.name : '未知节点';
-        const targetType = targetNode ? NODE_TYPE_LABELS[targetNode.node_type] : '';
-        const targetBadgeClass = targetNode ? targetNode.node_type : '';
-
-        container.innerHTML = `
-            <div class="next-step-card">
-                <span class="label">下一步骤：</span>
-                <span class="value flow-node-badge ${targetBadgeClass}">${targetType}</span>
-                <span style="font-size:13px;font-weight:500;margin-right:auto;margin-left:8px;">${targetName}</span>
-                <div class="actions">
-                    <button onclick="selectNodeById('${callbackNodeId}')">✏️ 编辑</button>
-                    <button onclick="unlinkNode('${nodeType}')" class="text-danger">❌ 断开</button>
-                </div>
-            </div>
-        `;
+        if (!targetNode) return;
+        container.innerHTML = `<div class="next-step-card"><span class="label">下一步骤：</span><span class="value flow-node-badge ${targetNode.node_type}">${NODE_TYPE_LABELS[targetNode.node_type]}</span><span style="font-size:13px;font-weight:500;margin-right:auto;margin-left:8px;">${targetNode.name}</span><div class="actions"><button onclick="selectNodeById('${callbackNodeId}')">✏️ 编辑</button><button onclick="unlinkNode('${nodeType}')" class="text-danger">❌ 断开</button></div></div>`;
     } else {
-        // 详情页没有下一步
-        if (nodeType === 'detail') {
-            container.innerHTML = `<div style="font-size:12px;color:var(--text-dim);text-align:center;">（终点节点）</div>`;
-            return;
-        }
-
-        container.innerHTML = `
-            <button class="btn btn-outline btn-block btn-dashed" onclick="showAddChildNode(app.state.editingNodeId)">
-                ➕ 添加/选择 下一步骤
-            </button>
-        `;
+        if (nodeType === 'detail') { container.innerHTML = `<div style="font-size:12px;color:var(--text-dim);text-align:center;">（终点节点）</div>`; return; }
+        container.innerHTML = `<button class="btn btn-outline btn-block btn-dashed" onclick="showAddChildNode(app.state.editingNodeId)">➕ 选择 下一步骤</button>`;
     }
 }
 
-/** 通过 ID 选中节点 */
-function selectNodeById(nodeId) {
-    const node = app.state.nodes.find(n => n._id === nodeId);
-    if (node) selectNode(node);
-}
-
-/** 断开节点关联 */
+function selectNodeById(nodeId) { const node = app.state.nodes.find(n => n._id === nodeId); if (node) selectNode(node); }
 async function unlinkNode(nodeType) {
-    if (!confirm('确定要断开与下一步骤的关联吗？')) return;
-    try {
-        await api.setCallback(app.state.editingNodeId, '');
-        await refreshNodes();
-
-        const updatedNode = app.state.nodes.find(n => n._id === app.state.editingNodeId);
-        if (updatedNode) {
-            loadNodeToForm(updatedNode);
-            showToast('关联已断开', 'success');
-        }
-    } catch (e) {
-        showToast('操作失败: ' + e.message, 'error');
-    }
+    if (!confirm('确定要断开吗？')) return;
+    try { await api.setCallback(app.state.editingNodeId, ''); await refreshNodes(); const updatedNode = app.state.nodes.find(n => n._id === app.state.editingNodeId); if (updatedNode) loadNodeToForm(updatedNode); } catch (e) { showToast('操作失败: ' + e.message, 'error'); }
 }
 
-/** 切换去重字段输入框显示状态 */
 function toggleDedupField() {
     const type = document.getElementById('detail-dedup-type')?.value;
     const fieldSelect = document.getElementById('detail-dedup-field');
-    if (fieldSelect) {
-        fieldSelect.style.display = (type === 'field') ? 'inline-block' : 'none';
-        if (type === 'field') refreshDedupFieldList();
-    }
-}
-
-/** 解析 JSON Headers (支持宽松模式/Python字典) */
-function parseJSONHeaders(text) {
-    if (!text || !text.trim()) return {};
-
-    // 1. 尝试标准 JSON
-    try {
-        return JSON.parse(text);
-    } catch (e) {
-        // 忽略标准错误，尝试宽松模式
-    }
-
-    // 2. 尝试宽松执行 (支持单引号, None, True, False, 尾随逗号)
-    // ⚠️ 安全风险警告：使用 new Function 执行用户输入的代码存在 XSS 风险。
-    // 在生产环境中应严格校验或使用更安全的解析器。当前实现假定此工具仅在受信任的开发环境中使用。
-    try {
-        const fn = new Function('None', 'True', 'False', `return (${text});`);
-        const result = fn(null, true, false);
-
-        if (typeof result === 'object' && result !== null) {
-            return result;
-        }
-    } catch (e2) {
-        throw new Error("格式错误: 请提供有效的 JSON 或 Python 字典 ({'key': 'value'})");
-    }
-
-    throw new Error("格式错误: 结果必须是对象");
+    if (fieldSelect) { fieldSelect.style.display = (type === 'field') ? 'inline-block' : 'none'; if (type === 'field') refreshDedupFieldList(); }
 }

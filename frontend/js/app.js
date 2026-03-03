@@ -373,21 +373,26 @@ function updateDataSearchFields(items) {
     const currentVal = select.value;
     const fields = new Set();
     items.forEach(item => {
-        if (item.data) Object.keys(item.data).forEach(k => fields.add(k));
-    });
-
-    if (fields.size === 0) return;
-
-    const existingOptions = Array.from(select.options).map(o => o.value);
-    fields.forEach(f => {
-        if (!existingOptions.includes(f)) {
-            const opt = document.createElement('option');
-            opt.value = f;
-            opt.textContent = f;
-            select.appendChild(opt);
+        if (item.data) {
+            Object.keys(item.data).forEach(k => {
+                if (k !== 'detail_url') fields.add(k);
+            });
         }
     });
-    if (currentVal) select.value = currentVal;
+
+    // ── 核心修复：彻底清空现有选项 ──
+    select.innerHTML = '<option value="">-- 选择字段 --</option>';
+    if (fields.size === 0) return;
+
+    // 重新按字母排序填充
+    Array.from(fields).sort().forEach(f => {
+        const opt = document.createElement('option');
+        opt.value = f;
+        opt.textContent = f;
+        select.appendChild(opt);
+    });
+
+    if (fields.has(currentVal)) select.value = currentVal;
 }
 
 async function deleteSingleData(dataId) {
@@ -410,7 +415,11 @@ function renderDataTable(result) {
 
     const allKeys = new Set();
     result.items.forEach(item => {
-        if (item.data) Object.keys(item.data).forEach(k => allKeys.add(k));
+        if (item.data) {
+            Object.keys(item.data).forEach(k => {
+                if (k !== 'detail_url') allKeys.add(k);
+            });
+        }
     });
     const keys = Array.from(allKeys);
 

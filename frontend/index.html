@@ -83,10 +83,12 @@
                                 <div class="card-title">🚀 起始页配置</div>
                                 <div class="form-group"><label>节点名称</label><input id="start-name" class="form-input">
                                 </div>
+                                
                                 <div class="form-row">
-                                    <div class="form-group" style="flex:1;"><label>起始 URL 列表 (支持通配符) *</label>
-                                        <div id="start-url-list" class="field-list"></div>
-                                        <button class="btn btn-ghost btn-sm" onclick="addStartUrlRow()">➕ 添加 URL</button>
+                                    <div class="form-group" style="flex:1;">
+                                        <label>起始 URL 列表 (支持通配符) *</label>
+                                        <div id="start-url-list" class="field-list" style="margin-bottom:8px;"></div>
+                                        <button type="button" class="btn btn-ghost btn-sm" onclick="addStartUrlRow()">添加 URL</button>
                                     </div>
                                     <div class="form-group" style="width:120px;"><label>方法</label><select id="start-method"
                                             class="form-select">
@@ -94,13 +96,37 @@
                                             <option>POST</option>
                                         </select></div>
                                 </div>
-                                <div class="form-group"><label>Headers</label><textarea id="start-headers"
-                                        class="form-textarea"></textarea></div>
-                                <div class="form-group"><label>Body</label><textarea id="start-body"
-                                        class="form-textarea"></textarea></div>
+
+                                <div class="form-group">
+                                    <label>URL 查询参数 (Query Params JSON)</label>
+                                    <textarea id="start-params" class="form-textarea" style="height:80px;" placeholder='{"page": "1", "size": "20"}'></textarea>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>请求头 (Headers JSON)</label>
+                                        <textarea id="start-headers" class="form-textarea" style="height:100px;" placeholder='{"User-Agent": "...", "Referer": "..."}'></textarea>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Cookies (JSON)</label>
+                                        <textarea id="start-cookies" class="form-textarea" style="height:100px;" placeholder='{"xq_a_token": "..."}'></textarea>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label>POST 请求体 (Body)</label>
+                                    <div style="display:flex; gap:12px; margin-bottom:8px; align-items:center;">
+                                        <span style="font-size:12px; color:var(--text-secondary);">格式：</span>
+                                        <select id="start-body-type" class="form-select" style="width:120px; padding:4px 8px; height:30px;">
+                                            <option value="json">JSON</option>
+                                            <option value="form">Form (x-www-form-urlencoded)</option>
+                                        </select>
+                                    </div>
+                                    <textarea id="start-body" class="form-textarea" placeholder='{"key": "value"} 或 key1=val1&key2=val2'></textarea>
+                                </div>
                                 <div id="start-next-step" class="next-step-section"></div>
                             </div>
-                            <button class="btn btn-primary" onclick="saveNode('start')">💾 保存配置</button>
+                            <button class="btn btn-primary" onclick="saveNode('start')">保存配置</button>
                         </div>
 
                         <!-- 列表页 -->

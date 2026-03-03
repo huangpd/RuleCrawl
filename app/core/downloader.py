@@ -62,21 +62,40 @@ class HttpxDownloader(BaseDownloader):
     async def fetch(self, url: str, **kwargs) -> DownloadResponse:
         method = kwargs.get("method", "GET").upper()
         headers = {"User-Agent": DEFAULT_USER_AGENT}
-        if custom_headers := kwargs.get("headers"): 
+        if custom_headers := kwargs.get("headers"):
             headers.update({k: str(v) for k, v in custom_headers.items()})
-        
+
+        params = kwargs.get("params")
+        body = kwargs.get("body")
+        body_type = kwargs.get("body_type", "json")
+
+        # 处理 POST 请求体格式
+        content = None
+        if method == "POST" and body:
+            if body_type == "json":
+                headers["Content-Type"] = "application/json"
+                content = body # 假设 body 已经是 JSON 字符串
+            else:
+                headers["Content-Type"] = "application/x-www-form-urlencoded"
+                content = body # httpx 会自动处理字符串格式的 form body
+
         client = await self._get_client()
         start_time = time.time()
-        
+
         try:
-            if method == "POST":
-                resp = await client.post(url, headers=headers, cookies=kwargs.get("cookies"), content=kwargs.get("body"), timeout=kwargs.get("timeout", REQUEST_TIMEOUT))
-            else:
-                resp = await client.get(url, headers=headers, cookies=kwargs.get("cookies"), timeout=kwargs.get("timeout", REQUEST_TIMEOUT))
-            
+            resp = await client.request(
+                method=method,
+                url=url,
+                headers=headers,
+                params=params,
+                content=content,
+                cookies=kwargs.get("cookies"),
+                timeout=kwargs.get("timeout", REQUEST_TIMEOUT)
+            )
+
             duration = time.time() - start_time
             logger.info("HTTPX [%d] %s (%.2fs)", resp.status_code, url, duration)
-            
+
             resp_ct = resp.headers.get("content-type", "").lower()
             content_type = "html"
             if "json" in resp_ct: content_type = "json"

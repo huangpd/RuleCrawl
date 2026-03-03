@@ -670,8 +670,8 @@ body {
 
 .field-row {
     display: grid;
-    grid-template-columns: 1fr 120px 2fr 40px;
-    gap: 8px;
+    grid-template-columns: 120px 100px 1fr 220px;
+    gap: 12px;
     align-items: center;
     padding: 10px 12px;
     background: rgba(0, 0, 0, 0.2);

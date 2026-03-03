@@ -1,10 +1,9 @@
 """
 节点数据模型
-5 种节点类型：start / intermediate / list / next / detail
 """
 
-from pydantic import BaseModel, Field, field_validator
-from typing import Optional, Literal
+from pydantic import BaseModel, Field
+from typing import Optional, Literal, Dict, List
 from datetime import datetime
 
 
@@ -26,25 +25,19 @@ class FieldRule(BaseModel):
         "xpath", description="选择器类型"
     )
     required: bool = Field(False, description="是否必填（为空则丢弃整条记录）")
-    clean_rules: list[CleanRule] = Field(default_factory=list, description="清洗规则列表")
+    clean_rules: List[CleanRule] = Field(default_factory=list, description="清洗规则列表")
 
 
 class RequestConfig(BaseModel):
     """HTTP 请求配置"""
-    url: list[str] = Field(default_factory=list, description="请求 URL 列表")
+    url: List[str] = Field(default_factory=list, description="请求 URL 列表")
     method: Literal["GET", "POST"] = Field("GET", description="请求方法")
-    headers: Optional[dict] = Field(default_factory=dict, description="自定义请求头")
-    cookies: Optional[dict] = Field(default_factory=dict, description="自定义 Cookies")
-    body: Optional[str] = Field(None, description="POST 请求体")
+    params: Optional[Dict[str, str]] = Field(default_factory=dict, description="URL 查询参数")
+    headers: Optional[Dict[str, str]] = Field(default_factory=dict, description="自定义请求头")
+    cookies: Optional[Dict[str, str]] = Field(default_factory=dict, description="自定义 Cookies")
+    body: Optional[str] = Field(None, description="POST 请求体内容")
+    body_type: Literal["json", "form"] = Field("json", description="请求体格式")
     content_type: Optional[str] = Field(None, description="Content-Type")
-
-    @field_validator("url", mode="before")
-    @classmethod
-    def ensure_list(cls, v):
-        if isinstance(v, list): return v
-        if isinstance(v, str) and v.strip():
-            return [line.strip() for line in v.split("\n") if line.strip()]
-        return []
 
 
 class ParseRules(BaseModel):
@@ -60,7 +53,7 @@ class ParseRules(BaseModel):
     link_selector_type: Optional[Literal["xpath", "css", "jsonpath", "regex", "text"]] = Field(
         None, description="链接选择器类型"
     )
-    fields: list[FieldRule] = Field(default_factory=list, description="字段提取规则列表")
+    fields: List[FieldRule] = Field(default_factory=list, description="字段提取规则列表")
     deduplication_type: Literal["none", "url", "field"] = Field(
         "none", description="去重策略：none(不去重), url(按source_url), field(按特定字段)"
     )
@@ -79,12 +72,10 @@ class PaginationConfig(BaseModel):
 class NodeCreate(BaseModel):
     """创建节点的请求体"""
     id: Optional[str] = Field(None, alias="_id", description="节点 ID")
-    node_type: Literal["start", "intermediate", "list", "next", "detail"] = Field(
+    node_type: Literal["start", "list", "detail"] = Field(
         ..., description="节点类型"
     )
     name: str = Field(..., min_length=1, max_length=200, description="节点名称")
-    
-    model_config = {"populate_by_name": True}
     request_config: RequestConfig = Field(
         default_factory=RequestConfig, description="HTTP 请求配置"
     )
@@ -92,11 +83,13 @@ class NodeCreate(BaseModel):
         default_factory=ParseRules, description="解析规则"
     )
     pagination: Optional[PaginationConfig] = Field(
-        None, description="翻页配置（下一页节点用）"
+        None, description="翻页配置"
     )
     callback_node_id: Optional[str] = Field(
         None, description="回调目标节点 ID"
     )
+    
+    model_config = {"populate_by_name": True}
 
 
 class NodeUpdate(BaseModel):
